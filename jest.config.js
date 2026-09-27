@@ -5,6 +5,7 @@ module.exports = {
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
     '^expo-secure-store$': '<rootDir>/src/lib/__mocks__/expo-secure-store.ts',
+    '^react-native$': '<rootDir>/src/lib/__mocks__/react-native.ts',
     // Map workspace packages to their TS sources (dist is ESM, Jest runs CJS)
     '^@smart-garden/api-client$': '<rootDir>/packages/api-client/src/index.ts',
     '^@smart-garden/types$': '<rootDir>/packages/types/src/index.ts',
