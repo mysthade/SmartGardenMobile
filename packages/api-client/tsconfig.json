@@ -1,0 +1,11 @@
+{
+  "extends": "@smart-garden/config/typescript/base.json",
+  "compilerOptions": {
+    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "outDir": "dist",
+    "rootDir": "src",
+    "composite": true
+  },
+  "include": ["src"],
+  "references": [{ "path": "../types" }]
+}
