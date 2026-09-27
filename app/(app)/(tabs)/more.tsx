@@ -64,7 +64,7 @@ export default function MoreMenuScreen() {
           icon={<BookOpen size={20} color="#2980B9" />}
           title="Фото-щоденник"
           subtitle="Записи росту, фото та спостереження"
-          onPress={() => router.push('/(app)/journal' as any)}
+          onPress={() => router.push('/journal')}
           theme={theme}
         />
         <View style={[styles.divider, { backgroundColor: theme.bd }]} />
@@ -72,7 +72,7 @@ export default function MoreMenuScreen() {
           icon={<Wheat size={20} color="#D35400" />}
           title="Облік урожаю"
           subtitle="Фіксація зборів та статистика"
-          onPress={() => router.push('/(app)/harvests' as any)}
+          onPress={() => router.push('/harvests')}
           theme={theme}
         />
         <View style={[styles.divider, { backgroundColor: theme.bd }]} />
@@ -80,7 +80,7 @@ export default function MoreMenuScreen() {
           icon={<AlertTriangle size={20} color="#E74C3C" />}
           title="Проблеми та шкідники"
           subtitle="Симптоми, хвороби та лікування"
-          onPress={() => router.push('/(app)/problems' as any)}
+          onPress={() => router.push('/problems')}
           theme={theme}
         />
         <View style={[styles.divider, { backgroundColor: theme.bd }]} />
@@ -88,7 +88,7 @@ export default function MoreMenuScreen() {
           icon={<BarChart3 size={20} color="#8E44AD" />}
           title="Аналітика продуктивності"
           subtitle="Графіки догляду та показники саду"
-          onPress={() => router.push('/(app)/analytics' as any)}
+          onPress={() => router.push('/analytics')}
           theme={theme}
         />
       </View>
@@ -100,7 +100,7 @@ export default function MoreMenuScreen() {
           icon={<Compass size={20} color={theme.ac} />}
           title="Планувальник території"
           subtitle="2D/3D схеми ділянки та розташування грядок"
-          onPress={() => router.push('/(app)/planner' as any)}
+          onPress={() => router.push('/planner')}
           theme={theme}
         />
       </View>

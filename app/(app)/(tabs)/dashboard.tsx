@@ -89,7 +89,7 @@ export default function DashboardScreen() {
       <View style={styles.quickActions}>
         <Pressable
           style={[styles.actionChip, { backgroundColor: theme.pn, borderColor: theme.bd }]}
-          onPress={() => router.push('/(app)/(tabs)/tasks' as any)}
+          onPress={() => router.push('/tasks')}
         >
           <Droplets size={16} color={theme.ac} />
           <Text style={[styles.actionChipText, { color: theme.tx }]}>Полив</Text>
@@ -97,7 +97,7 @@ export default function DashboardScreen() {
 
         <Pressable
           style={[styles.actionChip, { backgroundColor: theme.pn, borderColor: theme.bd }]}
-          onPress={() => router.push('/(app)/(tabs)/tasks' as any)}
+          onPress={() => router.push('/tasks')}
         >
           <Calendar size={16} color={theme.ac} />
           <Text style={[styles.actionChipText, { color: theme.tx }]}>Завдання</Text>
@@ -105,7 +105,7 @@ export default function DashboardScreen() {
 
         <Pressable
           style={[styles.actionChip, { backgroundColor: theme.pn, borderColor: theme.bd }]}
-          onPress={() => router.push('/(app)/(tabs)/gardens' as any)}
+          onPress={() => router.push('/gardens')}
         >
           <PlusCircle size={16} color={theme.ac} />
           <Text style={[styles.actionChipText, { color: theme.tx }]}>Нова рослина</Text>
@@ -124,7 +124,7 @@ export default function DashboardScreen() {
           loading={summary.isLoading}
           icon={<Trees size={20} color={theme.ac} />}
           theme={theme}
-          onPress={() => router.push('/(app)/(tabs)/gardens' as any)}
+          onPress={() => router.push('/gardens')}
         />
         <MetricCard
           label="Зони"
@@ -132,7 +132,7 @@ export default function DashboardScreen() {
           loading={summary.isLoading}
           icon={<Map size={20} color={theme.ac} />}
           theme={theme}
-          onPress={() => router.push('/(app)/(tabs)/gardens' as any)}
+          onPress={() => router.push('/gardens')}
         />
         <MetricCard
           label="Рослини"
@@ -140,7 +140,7 @@ export default function DashboardScreen() {
           loading={summary.isLoading}
           icon={<Leaf size={20} color={theme.ac} />}
           theme={theme}
-          onPress={() => router.push('/(app)/(tabs)/gardens' as any)}
+          onPress={() => router.push('/gardens')}
         />
         <MetricCard
           label="Задачі на сьогодні"
@@ -148,14 +148,14 @@ export default function DashboardScreen() {
           loading={summary.isLoading}
           icon={<ClipboardList size={20} color={theme.ac} />}
           theme={theme}
-          onPress={() => router.push('/(app)/(tabs)/tasks' as any)}
+          onPress={() => router.push('/tasks')}
         />
       </View>
 
       {/* Gardens Section */}
       <View style={styles.sectionHeader}>
         <Text style={[styles.sectionTitle, { color: theme.tx }]}>Мої сади</Text>
-        <Pressable onPress={() => router.push('/(app)/(tabs)/gardens' as any)}>
+        <Pressable onPress={() => router.push('/gardens')}>
           <Text style={[styles.seeAll, { color: theme.ac }]}>Всі сади →</Text>
         </Pressable>
       </View>
@@ -175,7 +175,7 @@ export default function DashboardScreen() {
           <Pressable
             key={garden.id}
             style={[styles.card, { backgroundColor: theme.pn, borderColor: theme.bd }]}
-            onPress={() => router.push('/(app)/(tabs)/gardens' as any)}
+            onPress={() => router.push('/gardens')}
           >
             <View style={styles.gardenCardHeader}>
               <View style={styles.gardenTitleRow}>
