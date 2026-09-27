@@ -14,6 +14,8 @@ export interface ThemeTokens {
   ac: string;
   ac2: string;
   ac3: string;
+  /** Колір помилок/небезпечних дій: світла #d64545, темна #e5695f. */
+  danger: string;
 }
 
 export const lightTheme: ThemeTokens = {
@@ -26,6 +28,7 @@ export const lightTheme: ThemeTokens = {
   ac: '#2f8f57',
   ac2: '#1f6e42',
   ac3: '#eaf6ee',
+  danger: '#d64545',
 };
 
 export const darkTheme: ThemeTokens = {
@@ -38,6 +41,7 @@ export const darkTheme: ThemeTokens = {
   ac: '#3fae6d',
   ac2: '#2f8f57',
   ac3: '#17251c',
+  danger: '#e5695f',
 };
 
 export const themes: Record<ThemeName, ThemeTokens> = {

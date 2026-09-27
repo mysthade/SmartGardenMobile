@@ -1,5 +1,5 @@
 import { darkTheme, lightTheme } from '@/src/theme/tokens';
-import { primaryShadow, sheetShadow } from '@/src/features/welcome/welcome-styles';
+import { primaryShadow, sheetShadow } from '@/src/components/auth/shadows';
 
 describe('welcome theme tokens (з референсу)', () => {
   it('світла тема — точні значення', () => {
@@ -13,6 +13,7 @@ describe('welcome theme tokens (з референсу)', () => {
       ac: '#2f8f57',
       ac2: '#1f6e42',
       ac3: '#eaf6ee',
+      danger: '#d64545',
     });
   });
 
@@ -27,6 +28,7 @@ describe('welcome theme tokens (з референсу)', () => {
       ac: '#3fae6d',
       ac2: '#2f8f57',
       ac3: '#17251c',
+      danger: '#e5695f',
     });
   });
 });

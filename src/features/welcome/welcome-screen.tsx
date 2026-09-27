@@ -1,12 +1,13 @@
-import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AuthBackground, PrimaryButton } from '@/src/components/auth/auth-chrome';
+import { BackButton, ThemeToggleButton } from '@/src/components/auth/icon-buttons';
 import { useTheme } from '@/src/theme/theme-context';
 import type { ThemeTokens } from '@/src/theme/tokens';
+import { sheetShadow } from '@/src/components/auth/shadows';
 import { GardenHero } from './garden-hero';
-import { primaryShadow, sheetShadow, welcomeStyles as s } from './welcome-styles';
+import { welcomeStyles as s } from './welcome-styles';
 
 const FEATURES: Array<{ icon: string; label: string }> = [
   { icon: '🗺️', label: '3D-планувальник' },
@@ -15,28 +16,16 @@ const FEATURES: Array<{ icon: string; label: string }> = [
 ];
 
 export default function WelcomeScreen() {
-  const { theme, toggleTheme } = useTheme();
+  const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  const dark = theme.name === 'dark';
 
   const heroWidth = Math.min(windowWidth * 0.82, 340);
   const heroHeight = (heroWidth * 190) / 300;
   const heroScale = windowHeight < 700 ? 0.82 : 1;
 
   return (
-    <View style={[s.root, { backgroundColor: theme.bg }]}>
-      <StatusBar style={dark ? 'light' : 'dark'} />
-      <LinearGradient
-        colors={[theme.ac3, theme.bg]}
-        locations={[0, 0.55]}
-        style={StyleSheet.absoluteFill}
-        pointerEvents="none"
-      />
-      {/* Декоративні плями (не перехоплюють тапи) */}
-      <View pointerEvents="none" style={[s.blob, blobStyle(theme, 220, -90, -70)]} />
-      <View pointerEvents="none" style={[s.blob, blobStyle(theme, 180, -60, undefined, -60)]} />
-
+    <AuthBackground>
       <ScrollView
         contentContainerStyle={[
           s.scrollContent,
@@ -46,15 +35,10 @@ export default function WelcomeScreen() {
         bounces={false}
       >
         <View style={s.topZone}>
-          <Pressable
-            onPress={toggleTheme}
-            accessibilityRole="button"
-            accessibilityLabel={dark ? 'Увімкнути світлу тему' : 'Увімкнути темну тему'}
-            style={[s.themeToggle, { borderColor: theme.bd, backgroundColor: theme.pn }]}
-            hitSlop={8}
-          >
-            <Text style={s.themeToggleText}>{dark ? '☀️' : '🌙'}</Text>
-          </Pressable>
+          <View style={styles.topRow}>
+            <View style={styles.spacer} />
+            <ThemeToggleButton />
+          </View>
 
           <Text style={[s.logo, { color: theme.ac2 }]}>🌱 Smart Garden</Text>
 
@@ -96,23 +80,27 @@ export default function WelcomeScreen() {
             ))}
           </View>
 
-          <Pressable
-            onPress={() => router.push('/register')}
-            accessibilityRole="button"
-            style={[s.primary, { backgroundColor: theme.ac, ...primaryShadow(theme) }]}
-          >
+          <PrimaryButton onPress={() => router.push('/register')}>
             <Text style={s.primaryText}>Створити акаунт</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => router.push('/login')}
-            accessibilityRole="button"
-            style={[s.ghost, { borderColor: theme.bd }]}
-          >
-            <Text style={[s.ghostText, { color: theme.ac2 }]}>Увійти</Text>
-          </Pressable>
+          </PrimaryButton>
+          <GhostLoginButton />
         </View>
       </ScrollView>
-    </View>
+    </AuthBackground>
+  );
+}
+
+/** Ghost "Увійти" лишаємо локально: Welcome — єдине місце з парою primary+ghost. */
+function GhostLoginButton() {
+  const { theme } = useTheme();
+  return (
+    <Pressable
+      onPress={() => router.push('/login')}
+      accessibilityRole="button"
+      style={[s.ghost, { borderColor: theme.bd }]}
+    >
+      <Text style={[s.ghostText, { color: theme.ac2 }]}>Увійти</Text>
+    </Pressable>
   );
 }
 
@@ -135,16 +123,10 @@ function HintChip({ theme, text }: { theme: ThemeTokens; text: string }) {
   );
 }
 
-function blobStyle(theme: ThemeTokens, size: number, top: number, left?: number, right?: number) {
-  const dark = theme.name === 'dark';
-  return {
-    backgroundColor: theme.ac,
-    opacity: dark ? 0.16 : size > 200 ? 0.12 : 0.1,
-    width: size,
-    height: size,
-    borderRadius: size / 2,
-    top,
-    ...(left !== undefined ? { left } : { right: right ?? 0 }),
-  } as const;
-}
+const styles = StyleSheet.create({
+  topRow: { flexDirection: 'row', alignItems: 'center', width: '100%' },
+  spacer: { flex: 1 },
+});
+
+export { BackButton };
 

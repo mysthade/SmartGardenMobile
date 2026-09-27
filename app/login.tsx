@@ -1,29 +1,38 @@
 import { loginSchema } from '@smart-garden/validation';
-import { Link, router } from 'expo-router';
+import { router } from 'expo-router';
 import { useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+  AuthField,
+  AuthFormError,
+  AuthFormTopBar,
+  AuthScreenShell,
+  AuthSheetHeader,
+  AuthSwitchRow,
+  PasswordVisibilityToggle,
+  SproutBadge,
+} from '@/src/components/auth';
+import { SubmitButton } from '@/src/components/auth/submit-button';
 import { useAuth } from '@/src/features/auth/auth-context';
+import { useTheme } from '@/src/theme/theme-context';
 
 type FieldErrors = Partial<Record<'email' | 'password', string>>;
 
 export default function LoginScreen() {
   const { login } = useAuth();
+  const { theme } = useTheme();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [focusedField, setFocusedField] = useState<'email' | 'password' | null>(null);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const onSubmit = async () => {
+    if (submitting) {
+      return;
+    }
     setFormError(null);
     const parsed = loginSchema.safeParse({ email, password });
     if (!parsed.success) {
@@ -50,91 +59,82 @@ export default function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.screen}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    <AuthScreenShell
+      topBar={<AuthFormTopBar onBack={() => router.replace('/welcome')} />}
+      hero={
+        <View style={styles.hero}>
+          <SproutBadge theme={theme} />
+          <Text style={[styles.logo, { color: theme.ac2 }]}>Smart Garden</Text>
+        </View>
+      }
     >
-      <View style={styles.container}>
-        <Text style={styles.logo}>🌱 Smart Garden</Text>
-        <Text style={styles.title}>Вітаємо знову</Text>
-        <Text style={styles.subtitle}>Увійдіть тим самим акаунтом, що й на сайті</Text>
+      <AuthSheetHeader title="Вітаємо знову 👋" subtitle="Увійдіть тим самим акаунтом, що й на сайті" />
 
-        <Text style={styles.label}>Email</Text>
-        <TextInput
-          style={styles.input}
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          autoComplete="email"
-          keyboardType="email-address"
-          placeholder="you@example.com"
-          placeholderTextColor="#9AA79B"
-        />
-        {errors.email ? <Text style={styles.error}>{errors.email}</Text> : null}
+      <AuthField
+        label="Email"
+        value={email}
+        onChangeText={setEmail}
+        placeholder="you@example.com"
+        leadingIcon="✉️"
+        error={errors.email}
+        focused={focusedField === 'email'}
+        onFocus={() => setFocusedField('email')}
+        onBlur={() => setFocusedField((f) => (f === 'email' ? null : f))}
+        keyboardType="email-address"
+        autoCapitalize="none"
+        autoComplete="email"
+        textContentType="emailAddress"
+        testID="login-email"
+      />
 
-        <Text style={styles.label}>Пароль</Text>
-        <TextInput
-          style={styles.input}
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          autoComplete="password"
-          placeholder="••••••••"
-          placeholderTextColor="#9AA79B"
-        />
-        {errors.password ? <Text style={styles.error}>{errors.password}</Text> : null}
+      <AuthField
+        label="Пароль"
+        value={password}
+        onChangeText={setPassword}
+        placeholder="••••••••"
+        leadingIcon="🔒"
+        error={errors.password}
+        focused={focusedField === 'password'}
+        onFocus={() => setFocusedField('password')}
+        onBlur={() => setFocusedField((f) => (f === 'password' ? null : f))}
+        secureTextEntry={!showPassword}
+        autoComplete="password"
+        textContentType="password"
+        testID="login-password"
+        trailing={
+          <PasswordVisibilityToggle
+            visible={showPassword}
+            onToggle={() => setShowPassword((v) => !v)}
+          />
+        }
+      />
 
-        {formError ? <Text style={styles.error}>{formError}</Text> : null}
+      {formError ? <AuthFormError message={formError} /> : null}
 
-        <Pressable
-          style={[styles.button, submitting && styles.buttonDisabled]}
-          onPress={() => void onSubmit()}
-          disabled={submitting}
-        >
-          {submitting ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.buttonText}>Увійти</Text>
-          )}
-        </Pressable>
-
-        <Link href="/register" asChild>
-          <Pressable style={styles.linkWrap}>
-            <Text style={styles.link}>Немає акаунту? Зареєструватися</Text>
-          </Pressable>
-        </Link>
+      {/* TODO(forgot-password): екрана відновлення пароля в mobile ще немає — потрібен окремий флоу. */}
+      <View style={styles.forgotWrap}>
+        <Text style={[styles.forgot, { color: theme.ac2 }]}>Забули пароль?</Text>
       </View>
-    </KeyboardAvoidingView>
+
+      <SubmitButton
+        title="Увійти"
+        onPress={() => void onSubmit()}
+        loading={submitting}
+        testID="login-submit"
+      />
+
+      <AuthSwitchRow
+        prefix="Немає акаунту?"
+        action="Зареєструватися"
+        onPress={() => router.push('/register')}
+      />
+    </AuthScreenShell>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#FAFCF8' },
-  container: { flex: 1, justifyContent: 'center', paddingHorizontal: 24 },
-  logo: { fontSize: 28, fontWeight: '700', textAlign: 'center', color: '#2F7A4F' },
-  title: { fontSize: 24, fontWeight: '600', marginTop: 24, color: '#1C2A1F' },
-  subtitle: { fontSize: 14, color: '#6B7A6E', marginTop: 4, marginBottom: 24 },
-  label: { fontSize: 13, fontWeight: '500', color: '#3D4B40', marginBottom: 6, marginTop: 12 },
-  input: {
-    borderWidth: 1,
-    borderColor: '#D5DED5',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: '#1C2A1F',
-    backgroundColor: '#fff',
-  },
-  error: { color: '#C0392B', fontSize: 13, marginTop: 6 },
-  button: {
-    backgroundColor: '#2F7A4F',
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 24,
-  },
-  buttonDisabled: { opacity: 0.6 },
-  buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  linkWrap: { marginTop: 18, alignItems: 'center' },
-  link: { color: '#2F7A4F', fontSize: 14, fontWeight: '500' },
+  hero: { alignItems: 'center' },
+  logo: { fontSize: 24, fontWeight: '800', marginTop: 10 },
+  forgotWrap: { alignItems: 'flex-end', marginTop: 10 },
+  forgot: { fontSize: 13, fontWeight: '700' },
 });
