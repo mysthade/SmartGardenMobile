@@ -24,14 +24,19 @@ export default function TabLayout() {
           backgroundColor: theme.pn,
           borderTopColor: theme.bd,
           borderTopWidth: 1,
-          height: Platform.OS === 'ios' ? 84 : 64 + insets.bottom,
-          paddingBottom: Math.max(insets.bottom, 8),
+          height: Platform.OS === 'ios' ? 88 : 70 + (insets.bottom > 0 ? insets.bottom : 4),
+          paddingBottom: insets.bottom > 0 ? insets.bottom : 8,
           paddingTop: 8,
           elevation: 8,
           shadowColor: '#000',
           shadowOffset: { width: 0, height: -2 },
           shadowOpacity: theme.name === 'dark' ? 0.3 : 0.06,
           shadowRadius: 6,
+        },
+        tabBarItemStyle: {
+          justifyContent: 'center',
+          alignItems: 'center',
+          paddingVertical: 2,
         },
         tabBarLabelStyle: {
           fontSize: 11,
@@ -44,14 +49,14 @@ export default function TabLayout() {
         name="index"
         options={{
           title: 'Огляд',
-          tabBarIcon: ({ color, size }) => <LayoutDashboard size={size} color={color} strokeWidth={2.2} />,
+          tabBarIcon: ({ color }) => <LayoutDashboard size={22} color={color} strokeWidth={2.2} />,
         }}
       />
       <Tabs.Screen
         name="gardens"
         options={{
           title: 'Сади',
-          tabBarIcon: ({ color, size }) => <Trees size={size} color={color} strokeWidth={2.2} />,
+          tabBarIcon: ({ color }) => <Trees size={22} color={color} strokeWidth={2.2} />,
         }}
       />
       <Tabs.Screen
@@ -65,21 +70,21 @@ export default function TabLayout() {
             fontSize: 10,
             fontWeight: '700',
           },
-          tabBarIcon: ({ color, size }) => <ClipboardList size={size} color={color} strokeWidth={2.2} />,
+          tabBarIcon: ({ color }) => <ClipboardList size={22} color={color} strokeWidth={2.2} />,
         }}
       />
       <Tabs.Screen
         name="weather"
         options={{
           title: 'Погода',
-          tabBarIcon: ({ color, size }) => <CloudSun size={size} color={color} strokeWidth={2.2} />,
+          tabBarIcon: ({ color }) => <CloudSun size={22} color={color} strokeWidth={2.2} />,
         }}
       />
       <Tabs.Screen
         name="more"
         options={{
           title: 'Більше',
-          tabBarIcon: ({ color, size }) => <Menu size={size} color={color} strokeWidth={2.2} />,
+          tabBarIcon: ({ color }) => <Menu size={22} color={color} strokeWidth={2.2} />,
         }}
       />
     </Tabs>
