@@ -29,7 +29,11 @@ export const refreshTokenStore = {
     }
   },
   async set(token: string): Promise<void> {
-    await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, token);
+    try {
+      await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, token);
+    } catch {
+      // Web preview: SecureStore is native-only — session simply won't persist.
+    }
   },
   async clear(): Promise<void> {
     try {
