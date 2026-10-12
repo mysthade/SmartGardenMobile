@@ -14,8 +14,10 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '@/src/lib/api';
+import { formatApiError } from '@/src/lib/api-errors';
 import { useTheme } from '@/src/theme/theme-context';
 import {
   Trees,
@@ -32,6 +34,7 @@ import {
   Check,
   Ruler,
   Maximize2,
+  Move,
 } from 'lucide-react-native';
 
 function genKey(prefix: string) {
@@ -61,15 +64,17 @@ const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> =
   FINISHED: { label: 'Завершено', color: '#95A5A6', bg: '#F2F4F4' },
 };
 
-const ZONE_TYPES = [
-  { value: 'BED', label: 'Грядка' },
-  { value: 'GREENHOUSE', label: 'Теплиця' },
-  { value: 'OPEN_GROUND', label: 'Відкритий ґрунт' },
-  { value: 'CONTAINER', label: 'Контейнер' },
-  { value: 'ORCHARD', label: 'Сад' },
-  { value: 'BERRY', label: 'Ягідник' },
-  { value: 'FLOWERBED', label: 'Клумба' },
-];
+/** Канонічні типи зон — мають збігатися з zoneTypeSchema бекенда. */
+export const ZONE_TYPE_LABEL: Record<string, string> = {
+  BED: 'Грядка',
+  GREENHOUSE: 'Теплиця',
+  ORCHARD: 'Сад',
+  FLOWERBED: 'Клумба',
+  FIELD: 'Відкритий ґрунт',
+  OTHER: 'Інше',
+};
+
+const ZONE_TYPES = Object.entries(ZONE_TYPE_LABEL).map(([value, label]) => ({ value, label }));
 
 export default function GardensScreen() {
   const { theme } = useTheme();
@@ -96,6 +101,7 @@ export default function GardensScreen() {
   const [zoneType, setZoneType] = useState('BED');
   const [zoneWidth, setZoneWidth] = useState('');
   const [zoneHeight, setZoneHeight] = useState('');
+  const [zoneError, setZoneError] = useState<string | null>(null);
 
   const [plantTypeId, setPlantTypeId] = useState('');
   const [plantName, setPlantName] = useState('');
@@ -192,9 +198,13 @@ export default function GardensScreen() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['zones', activeGardenId] });
       setAddZoneOpen(false);
+      setZoneError(null);
       setZoneName('');
       setZoneWidth('');
       setZoneHeight('');
+    },
+    onError: (error) => {
+      setZoneError(formatApiError(error, 'Не вдалося створити зону'));
     },
   });
 
@@ -367,7 +377,10 @@ export default function GardensScreen() {
         {activeGardenId ? (
           <Pressable
             style={[styles.addZoneBtn, { backgroundColor: theme.pn, borderColor: theme.bd }]}
-            onPress={() => setAddZoneOpen(true)}
+            onPress={() => {
+              setZoneError(null);
+              setAddZoneOpen(true);
+            }}
           >
             <Plus size={14} color={theme.ac} />
             <Text style={[styles.addZoneBtnText, { color: theme.ac }]}>Зона</Text>
@@ -409,7 +422,10 @@ export default function GardensScreen() {
               </Text>
               <Pressable
                 style={[styles.createFirstBtn, { backgroundColor: theme.ac }]}
-                onPress={() => setAddZoneOpen(true)}
+                onPress={() => {
+                  setZoneError(null);
+                  setAddZoneOpen(true);
+                }}
               >
                 <Plus size={16} color="#fff" />
                 <Text style={styles.createFirstBtnText}>Створити першу зону</Text>
@@ -428,6 +444,7 @@ export default function GardensScreen() {
                 <Pressable
                   style={styles.zoneHeaderLeft}
                   onPress={() => toggleZone(item.id)}
+                  onLongPress={() => setDetailZone(item)}
                 >
                   <View style={styles.zoneIconWrap}>
                     <Sprout size={18} color={theme.ac} />
@@ -435,7 +452,7 @@ export default function GardensScreen() {
                   <View style={styles.zoneInfo}>
                     <Text style={[styles.zoneName, { color: theme.tx }]}>{item.name}</Text>
                     <Text style={[styles.zoneMeta, { color: theme.mu }]}>
-                      {item.type ? `Тип: ${item.type}` : 'Грядка'}
+                      {`Тип: ${ZONE_TYPE_LABEL[item.type] ?? item.type ?? 'Грядка'}`}
                       {item.area ? ` • ${item.area} м²` : ''}
                       {` • Рослин: ${zonePlants.length}`}
                     </Text>
@@ -455,9 +472,10 @@ export default function GardensScreen() {
                   <Pressable
                     hitSlop={8}
                     style={styles.actionIconBtn}
-                    onPress={() => setDetailZone(item)}
+                    accessibilityLabel="Відкрити редактор зони"
+                    onPress={() => router.push(`/(app)/zones/${item.id}/editor` as never)}
                   >
-                    <Maximize2 size={16} color={theme.mu} />
+                    <Maximize2 size={16} color={theme.ac} />
                   </Pressable>
 
                   <Pressable
@@ -706,7 +724,7 @@ export default function GardensScreen() {
                   </Text>
                 </View>
                 <Text style={[styles.muted, { color: theme.mu, marginTop: 2, fontSize: 12 }]}>
-                  {detailZone?.type ? `Тип: ${detailZone.type}` : 'Грядка'}
+                  {detailZone?.type ? `Тип: ${ZONE_TYPE_LABEL[detailZone.type] ?? detailZone.type}` : 'Грядка'}
                   {detailZone?.area ? ` • Площа: ${detailZone.area} м²` : ''}
                   {detailZone?.width && detailZone?.height ? ` • ${detailZone.width} × ${detailZone.height} м` : ''}
                 </Text>
@@ -718,6 +736,19 @@ export default function GardensScreen() {
 
             <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
               <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+                <Pressable
+                  style={[styles.smallAddPlantBtn, { flex: 1, backgroundColor: theme.ac, borderColor: theme.ac, paddingVertical: 10, justifyContent: 'center' }]}
+                  onPress={() => {
+                    const zid = detailZone?.id;
+                    setDetailZone(null);
+                    if (zid) router.push(`/(app)/zones/${zid}/editor` as never);
+                  }}
+                >
+                  <Move size={16} color="#fff" />
+                  <Text style={[styles.smallAddPlantText, { color: '#fff', fontWeight: '700' }]}>
+                    Редактор зони
+                  </Text>
+                </Pressable>
                 <Pressable
                   style={[styles.smallAddPlantBtn, { flex: 1, backgroundColor: theme.ac, borderColor: theme.ac, paddingVertical: 10, justifyContent: 'center' }]}
                   onPress={() => {
@@ -958,6 +989,10 @@ export default function GardensScreen() {
                 />
               </View>
             </View>
+
+            {zoneError ? (
+              <Text style={[styles.zoneError, { color: theme.danger }]}>{zoneError}</Text>
+            ) : null}
 
             <Pressable
               style={[styles.submitModalBtn, { backgroundColor: theme.ac, opacity: !zoneName.trim() ? 0.6 : 1 }]}
@@ -1331,4 +1366,5 @@ const styles = StyleSheet.create({
     marginTop: 18,
   },
   submitModalBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  zoneError: { fontSize: 13, marginTop: 10, textAlign: 'center' },
 });

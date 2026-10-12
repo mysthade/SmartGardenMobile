@@ -40,3 +40,14 @@ yarn-error.*
 /ios
 /android
 install*.log
+
+# local dev / test scratch files
+*.log
+tc.log
+jest*.log
+jest*.txt
+run-tests.ps1
+bundle-check*.log
+bundle-error.json
+eslint-app.txt
+

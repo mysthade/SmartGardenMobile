@@ -1,6 +1,8 @@
-import { createApiClient } from '@smart-garden/api-client';
+import { createApiClient, ApiClientError } from '@smart-garden/api-client';
 import Constants from 'expo-constants';
 import { refreshTokenStore, tokenStore } from './token-store';
+
+export { ApiClientError };
 
 /**
  * API base URL resolution:
