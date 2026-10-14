@@ -57,10 +57,13 @@ export function useZoneAutosave(zoneId: string) {
     },
     onSuccess: async (result) => {
       queryClient.setQueryData(['bed-layout', zoneId], result.layout);
+      queryClient.setQueryData(['bed-layout', 'minimap', zoneId], result.layout);
       useZoneEditorStore.getState().applyIdMap(result.idMap, result.layout);
       useZoneEditorStore.getState().setSaveStatus('saved');
+      await queryClient.invalidateQueries({ queryKey: ['bed-layout', 'minimap', zoneId] });
       await queryClient.invalidateQueries({ queryKey: ['plants', 'zone', zoneId] });
       await queryClient.invalidateQueries({ queryKey: ['plants'] });
+      await queryClient.invalidateQueries({ queryKey: ['zones'] });
     },
     onError: (err) => {
       const conflict =

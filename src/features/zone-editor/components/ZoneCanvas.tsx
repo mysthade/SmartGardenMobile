@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
-import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
+import { GestureDetector } from 'react-native-gesture-handler';
+import Svg, { Defs, Line, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { computePxPerMeter } from '@smart-garden/validation';
 import { GridLayer } from './GridLayer';
 import { PlantMarker } from './PlantMarker';
@@ -31,7 +32,6 @@ export function ZoneCanvas({ theme }: { theme: CanvasTheme }) {
   const setView = useZoneEditorStore((s) => s.setView);
   const zoomBy = useZoneEditorStore((s) => s.zoomBy);
   const setDragging = useZoneEditorStore((s) => s.setDragging);
-  const previewPlantPosition = useZoneEditorStore((s) => s.previewPlantPosition);
   const commitPlantPosition = useZoneEditorStore((s) => s.commitPlantPosition);
 
   const plants = useMemo(() => Object.values(plantsMap).filter((p) => !p.deleted), [plantsMap]);
@@ -70,12 +70,14 @@ export function ZoneCanvas({ theme }: { theme: CanvasTheme }) {
   );
   const onTapBackground = useCallback(() => select(null), [select]);
 
-  const gestures = useCanvasGestures({ getScale, onZoom: zoomBy, onPan, onTapBackground, isDragging });
+  const canvasGesture = useCanvasGestures({
+    getScale,
+    onZoom: zoomBy,
+    onPan,
+    onTapBackground,
+    isDragging,
+  });
 
-  const onDragMove = useCallback(
-    (id: string, xM: number, yM: number) => previewPlantPosition(id, xM, yM),
-    [previewPlantPosition],
-  );
   const onDragEnd = useCallback(
     (id: string, xM: number, yM: number) => commitPlantPosition(id, xM, yM),
     [commitPlantPosition],
@@ -83,6 +85,7 @@ export function ZoneCanvas({ theme }: { theme: CanvasTheme }) {
   const onDragStart = useCallback(() => setDragging(true), [setDragging]);
   const onSelect = useCallback((id: string) => select(id), [select]);
 
+  const selectedPlant = selectedId ? (plantsMap[selectedId] ?? null) : null;
 
   const fillColor = theme.name === 'dark' ? '#2a3a2c' : '#c7a17a';
   const fillEnd = theme.name === 'dark' ? '#1d2a1f' : '#a97e52';
@@ -90,7 +93,8 @@ export function ZoneCanvas({ theme }: { theme: CanvasTheme }) {
   const majorGrid = theme.name === 'dark' ? 'rgba(63,174,109,0.35)' : 'rgba(47,143,87,0.35)';
 
   return (
-    <View style={styles.canvasWrap} onLayout={onLayout} {...gestures}>
+    <GestureDetector gesture={canvasGesture}>
+      <View style={styles.canvasWrap} onLayout={onLayout}>
       {size.width > 0 && size.height > 0 ? (
         <>
           <Svg width={size.width} height={size.height} style={StyleSheet.absoluteFill}>
@@ -118,7 +122,31 @@ export function ZoneCanvas({ theme }: { theme: CanvasTheme }) {
                 gridStepM={gridStepM}
                 minorColor={minorGrid}
                 majorColor={majorGrid}
+                originX={originX}
+                originY={originY}
               />
+            ) : null}
+            {selectedPlant && !selectedPlant.deleted ? (
+              <>
+                <Line
+                  x1={originX + selectedPlant.positionX * pxPerMeter}
+                  y1={originY}
+                  x2={originX + selectedPlant.positionX * pxPerMeter}
+                  y2={originY + zoneH}
+                  stroke={theme.ac}
+                  strokeWidth={1}
+                  strokeDasharray="5 4"
+                />
+                <Line
+                  x1={originX}
+                  y1={originY + selectedPlant.positionY * pxPerMeter}
+                  x2={originX + zoneW}
+                  y2={originY + selectedPlant.positionY * pxPerMeter}
+                  stroke={theme.ac}
+                  strokeWidth={1}
+                  strokeDasharray="5 4"
+                />
+              </>
             ) : null}
           </Svg>
 
@@ -142,7 +170,6 @@ export function ZoneCanvas({ theme }: { theme: CanvasTheme }) {
                 inkColor="#1c2418"
                 showLabel={view.scale >= 0.75 && radius >= 10}
                 onSelect={onSelect}
-                onDragMove={onDragMove}
                 onDragEnd={onDragEnd}
                 onDragStart={onDragStart}
               />
@@ -150,7 +177,8 @@ export function ZoneCanvas({ theme }: { theme: CanvasTheme }) {
           })}
         </>
       ) : null}
-    </View>
+      </View>
+    </GestureDetector>
   );
 }
 

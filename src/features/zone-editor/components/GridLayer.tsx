@@ -10,6 +10,9 @@ type GridLayerProps = {
   minorColor: string;
   /** Колір пунктирних «акцентних» ліній через кожні N кроків. */
   majorColor: string;
+  /** Зсув зони на полотні (пікселі). За замовчуванням (0,0). */
+  originX?: number;
+  originY?: number;
 };
 
 /**
@@ -24,6 +27,8 @@ function GridLayerInner({
   gridStepM,
   minorColor,
   majorColor,
+  originX = 0,
+  originY = 0,
 }: GridLayerProps) {
   const { minorPath, majorPath } = useMemo(() => {
     const stepPx = gridStepM * pxPerMeter;
@@ -32,6 +37,8 @@ function GridLayerInner({
     if (stepPx <= 0 || w <= 0 || h <= 0) {
       return { minorPath: '', majorPath: '' };
     }
+    const ox = +originX.toFixed(2);
+    const oy = +originY.toFixed(2);
 
     const vLines = Math.round(widthM / gridStepM);
     const hLines = Math.round(heightM / gridStepM);
@@ -39,8 +46,8 @@ function GridLayerInner({
     const minor: string[] = [];
     const major: string[] = [];
     for (let i = 1; i < vLines; i++) {
-      const x = +(i * stepPx).toFixed(2);
-      const d = `M${x} 0L${x} ${h.toFixed(2)}`;
+      const x = +(ox + i * stepPx).toFixed(2);
+      const d = `M${x} ${oy}L${x} ${(oy + h).toFixed(2)}`;
       if (i % MAJOR_EVERY === 0) {
         major.push(d);
       } else {
@@ -48,8 +55,8 @@ function GridLayerInner({
       }
     }
     for (let j = 1; j < hLines; j++) {
-      const y = +(j * stepPx).toFixed(2);
-      const d = `M0 ${y}L${w.toFixed(2)} ${y}`;
+      const y = +(oy + j * stepPx).toFixed(2);
+      const d = `M${ox} ${y}L${(ox + w).toFixed(2)} ${y}`;
       if (j % MAJOR_EVERY === 0) {
         major.push(d);
       } else {
@@ -57,7 +64,7 @@ function GridLayerInner({
       }
     }
     return { minorPath: minor.join(''), majorPath: major.join('') };
-  }, [widthM, heightM, pxPerMeter, gridStepM]);
+  }, [widthM, heightM, pxPerMeter, gridStepM, originX, originY]);
 
   if (!minorPath && !majorPath) {
     return null;

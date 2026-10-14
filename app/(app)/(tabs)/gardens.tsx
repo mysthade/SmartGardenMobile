@@ -17,8 +17,10 @@ import {
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '@/src/lib/api';
+import type { ZoneDto } from '@smart-garden/types';
 import { formatApiError } from '@/src/lib/api-errors';
 import { useTheme } from '@/src/theme/theme-context';
+import { ZoneMiniMap } from '@/src/features/zone-editor/components/ZoneMiniMap';
 import {
   Trees,
   Map,
@@ -31,8 +33,6 @@ import {
   Droplets,
   Wheat,
   X,
-  Check,
-  Ruler,
   Maximize2,
   Move,
 } from 'lucide-react-native';
@@ -83,12 +83,16 @@ export default function GardensScreen() {
 
   const [selectedGardenId, setSelectedGardenId] = useState<string | null>(null);
   const [expandedZones, setExpandedZones] = useState<Record<string, boolean>>({});
+  // Рослина, підсвічена на міні-схемі (тап по рядку у списку).
+  const [highlightedPlantId, setHighlightedPlantId] = useState<string | null>(null);
+  // Доступна ширина вмісту картки (для міні-схеми зі збереженням пропорцій).
+  const [contentWidth, setContentWidth] = useState(0);
 
   // Modals state
   const [addGardenOpen, setAddGardenOpen] = useState(false);
   const [addZoneOpen, setAddZoneOpen] = useState(false);
   const [addPlantZoneId, setAddPlantZoneId] = useState<string | null>(null);
-  const [detailZone, setDetailZone] = useState<any | null>(null);
+  const [detailZone, setDetailZone] = useState<ZoneDto | null>(null);
   const [harvestPlant, setHarvestPlant] = useState<{ id: string; name: string } | null>(null);
   const [carePlant, setCarePlant] = useState<{ id: string; name: string } | null>(null);
 
@@ -160,6 +164,9 @@ export default function GardensScreen() {
     }
     return map;
   }, [allPlants]);
+
+  // Рослини поточної зони у модалці деталей (типований доступ без `any`).
+  const detailPlants = detailZone ? (plantsByZone[detailZone.id] ?? []) : [];
 
   // Mutations
   const createGardenMutation = useMutation({
@@ -508,7 +515,19 @@ export default function GardensScreen() {
 
               {/* Plants in this Zone */}
               {expanded ? (
-                <View style={[styles.plantsContainer, { borderTopColor: theme.bd }]}>
+                <View
+                  style={[styles.plantsContainer, { borderTopColor: theme.bd }]}
+                  onLayout={(e) => setContentWidth(e.nativeEvent.layout.width - 24)}
+                >
+                  {contentWidth > 0 ? (
+                    <ZoneMiniMap
+                      zoneId={item.id}
+                      availableWidth={contentWidth}
+                      highlightedId={highlightedPlantId}
+                      onPress={() => router.push(`/(app)/zones/${item.id}/editor` as never)}
+                      theme={theme}
+                    />
+                  ) : null}
                   {zonePlants.length === 0 ? (
                     <View style={styles.noPlantsWrap}>
                       <Text style={[styles.noPlantsText, { color: theme.mu }]}>
@@ -538,7 +557,14 @@ export default function GardensScreen() {
                             },
                           ]}
                         >
-                          <View style={styles.plantTopRow}>
+                          <Pressable
+                            style={styles.plantTopRow}
+                            onPress={() =>
+                              setHighlightedPlantId((prev) =>
+                                prev === plant.id ? null : plant.id,
+                              )
+                            }
+                          >
                             <View style={styles.plantTitleWrap}>
                               <Text style={[styles.plantNameText, { color: theme.tx }]}>
                                 {plant.name}
@@ -554,7 +580,7 @@ export default function GardensScreen() {
                                 {st.label}
                               </Text>
                             </View>
-                          </View>
+                          </Pressable>
 
                           <View style={styles.plantMetaRow}>
                             <Text style={[styles.plantQty, { color: theme.mu }]}>
@@ -754,7 +780,7 @@ export default function GardensScreen() {
                   onPress={() => {
                     const zid = detailZone?.id;
                     setDetailZone(null);
-                    setAddPlantZoneId(zid);
+                    setAddPlantZoneId(zid ?? null);
                   }}
                 >
                   <Plus size={16} color="#fff" />
@@ -765,10 +791,10 @@ export default function GardensScreen() {
               </View>
 
               <Text style={[styles.fieldLabel, { color: theme.tx, fontWeight: '700', marginBottom: 8 }]}>
-                Рослини у цій зоні ({plantsByZone[detailZone?.id]?.length ?? 0}):
+                Рослини у цій зоні ({detailPlants.length}):
               </Text>
 
-              {(!plantsByZone[detailZone?.id] || plantsByZone[detailZone?.id].length === 0) ? (
+              {detailPlants.length === 0 ? (
                 <View style={[styles.emptyCard, { backgroundColor: theme.bg, borderColor: theme.bd, paddingVertical: 24 }]}>
                   <Sprout size={32} color={theme.mu} />
                   <Text style={[styles.muted, { color: theme.mu, marginTop: 6 }]}>
@@ -776,7 +802,7 @@ export default function GardensScreen() {
                   </Text>
                 </View>
               ) : (
-                plantsByZone[detailZone?.id].map((plant: any) => {
+                detailPlants.map((plant) => {
                   const st = STATUS_MAP[plant.status] ?? STATUS_MAP.GROWING;
                   return (
                     <View
@@ -1034,11 +1060,12 @@ export default function GardensScreen() {
 
             <Text style={[styles.fieldLabel, { color: theme.mu }]}>Одиниця виміру</Text>
             <View style={styles.statusChipsRow}>
-              {[
-                { val: 'PIECE', label: 'Штук' },
+              {(
+                [
+                  { val: 'PIECE', label: 'Штук' },
                 { val: 'GRAM', label: 'Грам' },
                 { val: 'LITER', label: 'Літрів' },
-              ].map((u) => (
+                ] as const).map((u) => (
                 <Pressable
                   key={u.val}
                   style={[
@@ -1048,7 +1075,7 @@ export default function GardensScreen() {
                       borderColor: harvestUnit === u.val ? '#D35400' : theme.bd,
                     },
                   ]}
-                  onPress={() => setHarvestUnit(u.val as any)}
+                  onPress={() => setHarvestUnit(u.val)}
                 >
                   <Text style={{ color: harvestUnit === u.val ? '#fff' : theme.tx, fontSize: 13, fontWeight: '600' }}>
                     {u.label}
