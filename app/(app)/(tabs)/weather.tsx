@@ -1,11 +1,8 @@
-import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { api } from '@/src/lib/api';
 import { useTheme } from '@/src/theme/theme-context';
 import {
-  CloudSun,
   Sun,
   Droplets,
   Wind,
@@ -21,9 +18,10 @@ export default function WeatherScreen() {
 
   const weatherQuery = useQuery({
     queryKey: ['weather', 'current'],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await fetch(
-        'https://api.open-meteo.com/v1/forecast?latitude=50.4501&longitude=30.5234&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code&timezone=auto'
+        'https://api.open-meteo.com/v1/forecast?latitude=50.4501&longitude=30.5234&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code&timezone=auto',
+        { signal }
       );
       if (!res.ok) throw new Error('Помилка завантаження погоди');
       const data = await res.json();
@@ -34,7 +32,8 @@ export default function WeatherScreen() {
         condition: 'Сонячно з проясненнями',
       };
     },
-    staleTime: 5 * 60_000,
+    staleTime: 12 * 60_000,
+    gcTime: 30 * 60_000,
   });
 
   const weather = weatherQuery.data;

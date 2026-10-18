@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/src/theme/theme-context';
-import { ArrowLeft, Compass, Grid, Layers, Sparkles } from 'lucide-react-native';
+import { ArrowLeft, Compass, Sparkles } from 'lucide-react-native';
 
 export default function PlannerScreen() {
   const { theme } = useTheme();

@@ -1,5 +1,7 @@
-import { Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Sprout, Trash2, X } from 'lucide-react-native';
+import { Alert, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, FileText, Sprout, Trash2, X } from 'lucide-react-native';
+import { useRouter, type Href } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import type { CatalogTheme } from './PlantCatalogSheet';
 import type { CanvasPlant } from '../store';
 import { useZoneEditorStore } from '../store';
@@ -22,7 +24,18 @@ type Props = {
 };
 
 export function PlantDetailSheet({ plant, onClose, theme }: Props) {
+  const router = useRouter();
   const deleteSelected = useZoneEditorStore((s) => s.deleteSelected);
+  const commitPlantPosition = useZoneEditorStore((s) => s.commitPlantPosition);
+  const gridStepM = useZoneEditorStore((s) => s.gridStepM);
+
+  const handleNudge = (dx: number, dy: number) => {
+    if (!plant) return;
+    if (Platform.OS !== 'web') {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
+    commitPlantPosition(plant.id, plant.positionX + dx, plant.positionY + dy);
+  };
 
   return (
     <Modal visible={Boolean(plant)} transparent animationType="slide" onRequestClose={onClose}>
@@ -31,11 +44,16 @@ export function PlantDetailSheet({ plant, onClose, theme }: Props) {
         <View style={styles.header}>
           <View style={styles.titleRow}>
             <Sprout size={20} color={theme.ac} />
-            <Text style={[styles.title, { color: theme.tx }]}>
+            <Text
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              maxFontSizeMultiplier={1.3}
+              style={[styles.title, { color: theme.tx }]}
+            >
               {plant?.name ?? 'Рослина'}
             </Text>
           </View>
-          <Pressable hitSlop={10} onPress={onClose}>
+          <Pressable hitSlop={12} onPress={onClose} style={styles.closeBtn}>
             <X size={20} color={theme.mu} />
           </Pressable>
         </View>
@@ -52,8 +70,17 @@ export function PlantDetailSheet({ plant, onClose, theme }: Props) {
                 theme={theme}
               />
               <Meta
-                label="Координати, м"
-                value={`${plant.positionX.toFixed(2)} × ${plant.positionY.toFixed(2)}`}
+                label="Позиція (X × Y)"
+                value={
+                  Number.isFinite(plant.positionX) && Number.isFinite(plant.positionY)
+                    ? `${plant.positionX.toFixed(2)} м × ${plant.positionY.toFixed(2)} м`
+                    : 'Не вказано'
+                }
+                theme={theme}
+              />
+              <Meta
+                label="Діаметр"
+                value={`${(Number.isFinite(plant.size) && plant.size > 0 ? plant.size : 0.4).toFixed(2)} м`}
                 theme={theme}
               />
               <Meta
@@ -63,7 +90,63 @@ export function PlantDetailSheet({ plant, onClose, theme }: Props) {
               />
             </View>
 
+            {/* Блок точного зсуву стрілками ← ↑ ↓ → (крок сітки) */}
+            <View style={[styles.nudgeBox, { backgroundColor: theme.bg, borderColor: theme.bd }]}>
+              <Text maxFontSizeMultiplier={1.3} style={[styles.nudgeLabel, { color: theme.mu }]}>
+                Точний зсув (крок {gridStepM} м):
+              </Text>
+              <View style={styles.dpad}>
+                <Pressable
+                  accessibilityLabel="Зсунути вгору"
+                  onPress={() => handleNudge(0, -gridStepM)}
+                  style={[styles.nudgeBtn, { backgroundColor: theme.pn, borderColor: theme.bd }]}
+                  hitSlop={8}
+                >
+                  <ArrowUp size={20} color={theme.tx} />
+                </Pressable>
+                <View style={styles.dpadRow}>
+                  <Pressable
+                    accessibilityLabel="Зсунути вліво"
+                    onPress={() => handleNudge(-gridStepM, 0)}
+                    style={[styles.nudgeBtn, { backgroundColor: theme.pn, borderColor: theme.bd }]}
+                    hitSlop={8}
+                  >
+                    <ArrowLeft size={20} color={theme.tx} />
+                  </Pressable>
+                  <Pressable
+                    accessibilityLabel="Зсунути вниз"
+                    onPress={() => handleNudge(0, gridStepM)}
+                    style={[styles.nudgeBtn, { backgroundColor: theme.pn, borderColor: theme.bd }]}
+                    hitSlop={8}
+                  >
+                    <ArrowDown size={20} color={theme.tx} />
+                  </Pressable>
+                  <Pressable
+                    accessibilityLabel="Зсунути вправо"
+                    onPress={() => handleNudge(gridStepM, 0)}
+                    style={[styles.nudgeBtn, { backgroundColor: theme.pn, borderColor: theme.bd }]}
+                    hitSlop={8}
+                  >
+                    <ArrowRight size={20} color={theme.tx} />
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+
             <View style={styles.actions}>
+              <Pressable
+                onPress={() => {
+                  onClose();
+                  router.push(`/plants/${plant.id}` as Href);
+                }}
+                style={[styles.btn, { borderColor: theme.ac, backgroundColor: theme.ac }]}
+              >
+                <FileText size={16} color="#ffffff" />
+                <Text maxFontSizeMultiplier={1.3} style={[styles.btnText, { color: '#ffffff' }]}>
+                  Відкрити картку
+                </Text>
+              </Pressable>
+
               <Pressable
                 onPress={() => {
                   Alert.alert('Видалити рослину?', `«${plant.name}» буде прибрано зі схеми.`, [
@@ -81,7 +164,9 @@ export function PlantDetailSheet({ plant, onClose, theme }: Props) {
                 style={[styles.btn, { borderColor: theme.danger }]}
               >
                 <Trash2 size={16} color={theme.danger} />
-                <Text style={[styles.btnText, { color: theme.danger }]}>Видалити</Text>
+                <Text maxFontSizeMultiplier={1.3} style={[styles.btnText, { color: theme.danger }]}>
+                  Видалити
+                </Text>
               </Pressable>
             </View>
           </>
@@ -102,8 +187,12 @@ function Meta({
 }) {
   return (
     <View style={styles.metaRow}>
-      <Text style={[styles.metaLabel, { color: theme.mu }]}>{label}</Text>
-      <Text style={[styles.metaValue, { color: theme.tx }]}>{value}</Text>
+      <Text maxFontSizeMultiplier={1.3} style={[styles.metaLabel, { color: theme.mu }]}>
+        {label}
+      </Text>
+      <Text maxFontSizeMultiplier={1.3} style={[styles.metaValue, { color: theme.tx }]}>
+        {value}
+      </Text>
     </View>
   );
 }
@@ -119,25 +208,51 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 22,
     borderWidth: 1,
     padding: 16,
+    paddingBottom: 28,
   },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
   title: { fontSize: 17, fontWeight: '800', flex: 1 },
+  closeBtn: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   hint: { fontSize: 14, textAlign: 'center', paddingVertical: 20 },
-  meta: { gap: 8, marginBottom: 16 },
+  meta: { gap: 6, marginBottom: 12 },
   metaRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   metaLabel: { fontSize: 13 },
   metaValue: { fontSize: 13, fontWeight: '700' },
+  nudgeBox: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 12,
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  nudgeLabel: { fontSize: 12, fontWeight: '600', marginBottom: 8 },
+  dpad: { alignItems: 'center', gap: 6 },
+  dpadRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  nudgeBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   actions: { flexDirection: 'row', gap: 10 },
   btn: {
     flex: 1,
+    minHeight: 46,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
     borderWidth: 1,
     borderRadius: 12,
-    paddingVertical: 12,
+    paddingVertical: 10,
   },
   btnText: { fontSize: 14, fontWeight: '700' },
 });

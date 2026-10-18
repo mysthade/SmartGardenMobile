@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "index.ts",
   "dependencies": {
+    "@react-native-community/datetimepicker": "^9.2.1",
     "@smart-garden/api-client": "workspace:*",
     "@smart-garden/types": "workspace:*",
     "@smart-garden/validation": "workspace:*",
@@ -10,6 +11,7 @@
     "expo": "~57.0.25",
     "expo-constants": "~57.0.19",
     "expo-haptics": "~57.0.3",
+    "expo-image-picker": "^58.0.10",
     "expo-linear-gradient": "^57.0.2",
     "expo-linking": "~57.0.11",
     "expo-router": "~57.0.23",

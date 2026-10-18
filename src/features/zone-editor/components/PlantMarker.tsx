@@ -1,34 +1,36 @@
-import { memo } from 'react';
+import { memo, useCallback } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue, type SharedValue } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { pixelsToMeters } from '@smart-garden/validation';
+import { CATEGORY_EMOJI } from '@/src/lib/zone-labels';
 import type { CanvasPlant } from '../store';
 
 /** Тривалість затримки перед початком перетягування (мс). */
-const LONG_PRESS_MS = 250;
-/** Поріг «руху» (px): менше — вважаємо тапом, а не drag. */
+const LONG_PRESS_MS = 200;
+/** Поріг руху (px): менше — вважаємо тапом, а не drag. */
 const MOVE_THRESHOLD_PX = 4;
+/** Мінімальний розмір області натискання за рекомендаціями WCAG / Material (dp). */
+const MIN_TOUCH_TARGET_DP = 44;
 
 type PlantMarkerProps = {
   plant: CanvasPlant;
-  /** Екранна позиція центру маркера (пікселі). */
+  /** Екранна позиція центру маркера (пікселі, заклампована у межах зони). */
   x: number;
   y: number;
   radius: number;
   selected: boolean;
   pxPerMeter: number;
-  strokeColor: string;
-  fillColor: string;
-  inkColor: string;
-  showLabel: boolean;
+  strokeColor?: string;
+  fillColor?: string;
+  inkColor?: string;
+  showLabel?: boolean;
   onSelect: (id: string) => void;
   /** Фінальне комітування (зі snap+кламп) після відпускання. */
   onDragEnd: (id: string, xM: number, yM: number) => void;
   onDragStart: () => void;
-  /** Не використовується (під час drag позиція живе у shared values). */
   onDragMove?: (id: string, xM: number, yM: number) => void;
+  isDraggingCanvas?: SharedValue<boolean>;
 };
 
 function PlantMarkerInner({
@@ -38,37 +40,54 @@ function PlantMarkerInner({
   radius,
   selected,
   pxPerMeter,
-  strokeColor,
-  fillColor,
-  inkColor,
-  showLabel,
+  strokeColor = '#e67e22',
+  fillColor = '#ffffff',
+  inkColor = '#1c2418',
+  showLabel = true,
   onSelect,
   onDragEnd,
   onDragStart,
+  isDraggingCanvas,
 }: PlantMarkerProps) {
-  // Живий офсет під час перетягування — лише поточний маркер, без ререндеру стору.
+  // Живий офсет під час перетягування — оновлюється на UI thread без зайвих ререндерів стору.
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
   const moved = useSharedValue(false);
 
-  const fireHaptic = () => {
+  const fireHaptic = useCallback(() => {
     if (Platform.OS !== 'web') {
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     }
-  };
+  }, []);
 
-  const handleDragStart = () => {
+  const handleDragStart = useCallback(() => {
     onDragStart();
     fireHaptic();
-  };
-  const handleDragEnd = (xM: number, yM: number) => onDragEnd(plant.id, xM, yM);
-  const handleSelect = () => onSelect(plant.id);
+  }, [onDragStart, fireHaptic]);
+
+  const handleDragEnd = useCallback(
+    (translationX: number, translationY: number) => {
+      const dxM = pxPerMeter > 0 && Number.isFinite(translationX) ? translationX / pxPerMeter : 0;
+      const dyM = pxPerMeter > 0 && Number.isFinite(translationY) ? translationY / pxPerMeter : 0;
+      const baseX = Number.isFinite(plant.positionX) ? plant.positionX : 0;
+      const baseY = Number.isFinite(plant.positionY) ? plant.positionY : 0;
+      onDragEnd(plant.id, baseX + dxM, baseY + dyM);
+    },
+    [onDragEnd, plant.id, plant.positionX, plant.positionY, pxPerMeter],
+  );
+
+  const handleSelect = useCallback(() => {
+    onSelect(plant.id);
+  }, [onSelect, plant.id]);
 
   const pan = Gesture.Pan()
     .activateAfterLongPress(LONG_PRESS_MS)
     .onStart(() => {
       'worklet';
       moved.value = false;
+      if (isDraggingCanvas) {
+        isDraggingCanvas.value = true;
+      }
       runOnJS(handleDragStart)();
     })
     .onUpdate((e) => {
@@ -84,19 +103,19 @@ function PlantMarkerInner({
       translateX.value = 0;
       translateY.value = 0;
       if (!moved.value) {
-        // Long-press без руху → трактуємо як тап (виділення).
+        // Long-press без суттєвого руху трактуємо як тап (виділення).
         runOnJS(handleSelect)();
         return;
       }
-      const xM = plant.positionX + pixelsToMeters(e.translationX, pxPerMeter);
-      const yM = plant.positionY + pixelsToMeters(e.translationY, pxPerMeter);
-      runOnJS(handleDragEnd)(xM, yM);
+      runOnJS(handleDragEnd)(e.translationX, e.translationY);
     })
     .onFinalize(() => {
       'worklet';
-      // Безпечний скид, якщо жест перервано системою.
       translateX.value = 0;
       translateY.value = 0;
+      if (isDraggingCanvas) {
+        isDraggingCanvas.value = false;
+      }
     });
 
   const tap = Gesture.Tap()
@@ -108,23 +127,36 @@ function PlantMarkerInner({
       }
     });
 
-  // Pan має пріоритет: якщо long-press не встиг (швидкий тап) — спрацьовує tap.
   const composed = Gesture.Exclusive(pan, tap);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }, { translateY: translateY.value }],
   }));
 
-  const diameter = radius * 2;
+  const validRadius = Number.isFinite(radius) && radius > 0 ? radius : MIN_TOUCH_TARGET_DP / 2;
+  const diameter = validRadius * 2;
+  const emoji = plant.plantType?.category
+    ? (CATEGORY_EMOJI[plant.plantType.category] ?? '🌱')
+    : '🌱';
+  const hitPadding = Math.max(0, (MIN_TOUCH_TARGET_DP - diameter) / 2);
+  const safeX = Number.isFinite(x) ? x : 0;
+  const safeY = Number.isFinite(y) ? y : 0;
 
   return (
     <GestureDetector gesture={composed}>
       <Animated.View
         style={[
           styles.wrap,
-          { left: x - radius, top: y - radius, width: diameter, height: diameter },
+          {
+            left: safeX - validRadius - hitPadding,
+            top: safeY - validRadius - hitPadding,
+            width: diameter + hitPadding * 2,
+            height: diameter + hitPadding * 2,
+            padding: hitPadding,
+          },
           animatedStyle,
         ]}
+        hitSlop={{ top: hitPadding, bottom: hitPadding, left: hitPadding, right: hitPadding }}
         pointerEvents="box-only"
       >
         <View
@@ -135,43 +167,91 @@ function PlantMarkerInner({
               height: diameter,
               borderRadius: radius,
               backgroundColor: fillColor,
-              borderWidth: selected ? Math.max(2, radius * 0.3) : Math.max(1.2, radius * 0.2),
-              borderColor: strokeColor,
+              borderWidth: selected ? Math.max(2.5, radius * 0.35) : Math.max(1.8, radius * 0.22),
+              borderColor: selected ? '#2f8f57' : strokeColor,
+              shadowColor: '#000',
+              shadowOpacity: selected ? 0.25 : 0.12,
+              shadowRadius: selected ? 5 : 2,
+              shadowOffset: { width: 0, height: 1 },
+              elevation: selected ? 4 : 2,
             },
           ]}
         >
           {radius >= 6 ? (
             <Text
-              numberOfLines={1}
-              style={[
-                styles.icon,
-                { color: inkColor, fontSize: Math.max(7, Math.min(14, radius * 0.75)) },
-              ]}
+              style={{
+                fontSize: Math.max(9, Math.min(18, radius * 0.95)),
+                textAlign: 'center',
+                includeFontPadding: false,
+              }}
             >
-              {shortIcon(plant)}
+              {emoji}
             </Text>
           ) : null}
         </View>
+
         {showLabel ? (
-          <Text numberOfLines={1} style={[styles.label, { color: inkColor }]}>
-            {plant.name.slice(0, 14)}
-          </Text>
+          <View style={styles.labelContainer} pointerEvents="none">
+            <Text
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              maxFontSizeMultiplier={1.3}
+              style={[styles.label, { color: inkColor }]}
+            >
+              {plant.name}
+            </Text>
+          </View>
         ) : null}
       </Animated.View>
     </GestureDetector>
   );
 }
 
-function shortIcon(plant: CanvasPlant): string {
-  const raw = (plant.plantType?.iconKey ?? plant.name ?? '').trim();
-  return raw.slice(0, 2).toUpperCase();
-}
-
 const styles = StyleSheet.create({
-  wrap: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
-  circle: { alignItems: 'center', justifyContent: 'center' },
-  icon: { fontWeight: '800' },
-  label: { fontSize: 9, marginTop: 2, maxWidth: 72, textAlign: 'center' },
+  wrap: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  circle: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  labelContainer: {
+    position: 'absolute',
+    top: '100%',
+    marginTop: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    maxWidth: 90,
+  },
+  label: {
+    fontSize: 10,
+    fontWeight: '700',
+    textAlign: 'center',
+    textShadowColor: 'rgba(255, 255, 255, 0.85)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
 });
 
-export const PlantMarker = memo(PlantMarkerInner);
+export const PlantMarker = memo(PlantMarkerInner, (prev, next) => {
+  return (
+    prev.plant.id === next.plant.id &&
+    prev.plant.positionX === next.plant.positionX &&
+    prev.plant.positionY === next.plant.positionY &&
+    prev.plant.size === next.plant.size &&
+    prev.plant.status === next.plant.status &&
+    prev.plant.name === next.plant.name &&
+    prev.plant.version === next.plant.version &&
+    prev.selected === next.selected &&
+    prev.x === next.x &&
+    prev.y === next.y &&
+    prev.radius === next.radius &&
+    prev.pxPerMeter === next.pxPerMeter &&
+    prev.strokeColor === next.strokeColor &&
+    prev.fillColor === next.fillColor &&
+    prev.inkColor === next.inkColor &&
+    prev.showLabel === next.showLabel
+  );
+});

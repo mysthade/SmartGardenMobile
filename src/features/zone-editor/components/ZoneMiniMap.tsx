@@ -1,20 +1,20 @@
-import { Fragment, memo, useCallback, useMemo, useState } from 'react';
+import { Fragment, memo, useMemo } from 'react';
 import {
   ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
   View,
-  type LayoutChangeEvent,
 } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop, Text as SvgText } from 'react-native-svg';
 import { useQuery } from '@tanstack/react-query';
-import { computePxPerMeter } from '@smart-garden/validation';
+import { computePxPerMeter } from '@/src/features/zone-editor/lib/geometry';
 import { api } from '@/src/lib/api';
 import { CATEGORY_EMOJI } from '@/src/lib/zone-labels';
 import { GridLayer } from './GridLayer';
 
-const PAD = 0.9;
+const MINIMAP_PADDING_DP = 12;
+const MIN_MARKER_RADIUS_DP = 7; // Візуальний мінімум 14 dp
 
 type Theme = { name: string; bd: string; mu: string; ac: string };
 
@@ -29,56 +29,50 @@ type Props = {
 };
 
 /**
- * Міні-схема зони в картці (тільки перегляд).
- * Прямокутник зони (градієнт), сітка одним Path, круглі маркери рослин.
- * Не перехоплює жести — скрол списку працює; тап по схемі відкриває редактор.
+ * Міні-схема зони в картці (перегляд зі збереженням пропорцій та центруванням).
+ * Використовує ту саму геометрію, що й основний редактор.
  */
 function ZoneMiniMapInner({ zoneId, availableWidth, highlightedId, onPress, theme }: Props) {
-  const [height, setHeight] = useState(0);
-
   const layoutQuery = useQuery({
-    queryKey: ['bed-layout', 'minimap', zoneId],
+    queryKey: ['bed-layout', zoneId],
     queryFn: () => api.getBedLayout(zoneId),
     enabled: Boolean(zoneId) && availableWidth > 0,
     staleTime: 30_000,
+    gcTime: 5 * 60_000,
   });
 
   const layout = layoutQuery.data;
   const widthM = Number(layout?.zone.width) || 4;
   const heightM = Number(layout?.zone.height) || 2;
 
+  // Висота слота під міні-схему (від 90 до 190 dp) пропорційно реальному співвідношенню сторін
   const slotHeight = useMemo(() => {
-    if (availableWidth <= 0 || widthM <= 0 || heightM <= 0) return 120;
-    const px = computePxPerMeter({
-      stageWidthPx: availableWidth,
-      stageHeightPx: availableWidth,
-      bedWidthM: widthM,
-      bedHeightM: heightM,
-      padding: PAD,
-      scale: 1,
-    });
-    return Math.max(84, Math.min(heightM * px, 180));
+    if (availableWidth <= 0 || widthM <= 0 || heightM <= 0) return 130;
+    const aspect = heightM / widthM;
+    const computedH = availableWidth * aspect + MINIMAP_PADDING_DP * 2;
+    return Math.max(90, Math.min(Math.round(computedH), 190));
   }, [availableWidth, widthM, heightM]);
 
-  const onLayout = useCallback((e: LayoutChangeEvent) => setHeight(e.nativeEvent.layout.height), []);
-
+  // Масштаб через ту саму функцію computePxPerMeter
   const pxPerMeter = useMemo(() => {
-    if (availableWidth <= 0 || widthM <= 0) return 1;
-    const base = computePxPerMeter({
-      stageWidthPx: availableWidth,
-      stageHeightPx: slotHeight,
+    if (availableWidth <= 0 || widthM <= 0 || heightM <= 0) return 1;
+    const availW = Math.max(0, availableWidth - MINIMAP_PADDING_DP * 2);
+    const availH = Math.max(0, slotHeight - MINIMAP_PADDING_DP * 2);
+    return computePxPerMeter({
+      stageWidthPx: availW,
+      stageHeightPx: availH,
       bedWidthM: widthM,
       bedHeightM: heightM,
-      padding: PAD,
+      padding: 1.0,
       scale: 1,
     });
-    return base;
   }, [availableWidth, slotHeight, widthM, heightM]);
 
   const drawW = widthM * pxPerMeter;
   const drawH = heightM * pxPerMeter;
+  // Відцентроване розташування зони на міні-карті
   const originX = Math.max(0, (availableWidth - drawW) / 2);
-  const originY = Math.max(0, (height - drawH) / 2);
+  const originY = Math.max(0, (slotHeight - drawH) / 2);
 
   const plants = useMemo(
     () => (layout?.plants ?? []).filter((p) => p.positionX != null && p.positionY != null),
@@ -90,7 +84,6 @@ function ZoneMiniMapInner({ zoneId, availableWidth, highlightedId, onPress, them
   return (
     <Pressable
       onPress={onPress}
-      onLayout={onLayout}
       style={[
         styles.wrap,
         {
@@ -118,7 +111,7 @@ function ZoneMiniMapInner({ zoneId, availableWidth, highlightedId, onPress, them
             y={originY}
             width={drawW}
             height={drawH}
-            rx={Math.min(10, drawW * 0.05)}
+            rx={Math.min(10, drawW * 0.04)}
             fill={`url(#mm-${zoneId})`}
             stroke={theme.bd}
             strokeWidth={1}
@@ -127,19 +120,31 @@ function ZoneMiniMapInner({ zoneId, availableWidth, highlightedId, onPress, them
             widthM={widthM}
             heightM={heightM}
             pxPerMeter={pxPerMeter}
-            gridStepM={Math.max(0.5, widthM / 4)}
-            minorColor="rgba(0,0,0,0.08)"
-            majorColor="rgba(47,143,87,0.35)"
+            gridStepM={0.25}
+            minorColor={theme.name === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'}
+            majorColor={theme.name === 'dark' ? 'rgba(63,174,109,0.35)' : 'rgba(47,143,87,0.35)'}
+            originX={originX}
+            originY={originY}
           />
           {plants.map((plant) => {
-            const cx = originX + Number(plant.positionX) * pxPerMeter;
-            const cy = originY + Number(plant.positionY) * pxPerMeter;
-            const r = Math.max(4, (Number(plant.size) * pxPerMeter) / 2);
+            const rawPlantSize = Number(plant.size) || 0.4;
+            const r = Math.max(MIN_MARKER_RADIUS_DP, (rawPlantSize * pxPerMeter) / 2);
+            // Центр маркера клампиться з урахуванням радіуса, щоб не обрізався на краях
+            const cx = Math.min(
+              Math.max(originX + Number(plant.positionX) * pxPerMeter, originX + r),
+              originX + drawW - r,
+            );
+            const cy = Math.min(
+              Math.max(originY + Number(plant.positionY) * pxPerMeter, originY + r),
+              originY + drawH - r,
+            );
             const active = highlightedId === plant.id;
             const emoji =
               CATEGORY_EMOJI[plant.plantType.category] ?? plant.plantType.name.slice(0, 1);
+
             return (
               <Fragment key={plant.id}>
+                {/* Круглий білий маркер з помаранчевою рамкою */}
                 <Rect
                   x={cx - r}
                   y={cy - r}
@@ -148,9 +153,14 @@ function ZoneMiniMapInner({ zoneId, availableWidth, highlightedId, onPress, them
                   rx={r}
                   fill="#ffffff"
                   stroke={active ? theme.ac : '#e67e22'}
-                  strokeWidth={active ? 3 : 1.5}
+                  strokeWidth={active ? 2.5 : 1.5}
                 />
-                <SvgText x={cx} y={cy + r * 0.35} fontSize={Math.max(7, r)} textAnchor="middle">
+                <SvgText
+                  x={cx}
+                  y={cy + r * 0.38}
+                  fontSize={Math.max(8, r * 1.1)}
+                  textAnchor="middle"
+                >
                   {emoji}
                 </SvgText>
               </Fragment>
@@ -189,4 +199,14 @@ const styles = StyleSheet.create({
   fallbackText: { fontSize: 11, fontWeight: '600' },
 });
 
-export const ZoneMiniMap = memo(ZoneMiniMapInner);
+export const ZoneMiniMap = memo(ZoneMiniMapInner, (prev, next) => {
+  return (
+    prev.zoneId === next.zoneId &&
+    Math.round(prev.availableWidth) === Math.round(next.availableWidth) &&
+    prev.highlightedId === next.highlightedId &&
+    prev.theme.name === next.theme.name &&
+    prev.theme.bd === next.theme.bd &&
+    prev.theme.ac === next.theme.ac &&
+    prev.theme.mu === next.theme.mu
+  );
+});

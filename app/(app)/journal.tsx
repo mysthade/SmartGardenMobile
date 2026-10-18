@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import {
   ActivityIndicator,
   FlatList,
@@ -12,7 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '@/src/lib/api';
 import { useTheme } from '@/src/theme/theme-context';
-import { ArrowLeft, BookOpen, Calendar, Camera } from 'lucide-react-native';
+import { ArrowLeft, Calendar, Camera } from 'lucide-react-native';
 
 export default function JournalScreen() {
   const { theme } = useTheme();
@@ -85,7 +85,14 @@ export default function JournalScreen() {
           )
         }
         renderItem={({ item }) => (
-          <View style={[styles.card, { backgroundColor: theme.pn, borderColor: theme.bd }]}>
+          <Pressable
+            onPress={() => {
+              if (item.plantId) {
+                router.push(`/plants/${item.plantId}` as Href);
+              }
+            }}
+            style={[styles.card, { backgroundColor: theme.pn, borderColor: theme.bd }]}
+          >
             <View style={styles.cardHeader}>
               <View style={styles.dateRow}>
                 <Calendar size={14} color={theme.mu} />
@@ -99,7 +106,7 @@ export default function JournalScreen() {
             {item.description ? (
               <Text style={[styles.cardText, { color: theme.mu }]}>{item.description}</Text>
             ) : null}
-          </View>
+          </Pressable>
         )}
       />
     </View>

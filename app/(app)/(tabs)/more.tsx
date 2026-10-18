@@ -14,9 +14,8 @@ import {
   LogOut,
   ChevronRight,
   User,
-  Shield,
-  HelpCircle,
 } from 'lucide-react-native';
+import { type ThemeTokens } from '@/src/theme/tokens';
 
 export default function MoreMenuScreen() {
   const { user, logout } = useAuth();
@@ -140,7 +139,7 @@ function MenuItem({
   title: string;
   subtitle: string;
   onPress: () => void;
-  theme: any;
+  theme: ThemeTokens;
 }) {
   return (
     <Pressable style={styles.menuItem} onPress={onPress}>

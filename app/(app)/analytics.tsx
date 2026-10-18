@@ -4,7 +4,8 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '@/src/lib/api';
 import { useTheme } from '@/src/theme/theme-context';
-import { ArrowLeft, BarChart3, TrendingUp, CheckCircle, Sprout, Droplets } from 'lucide-react-native';
+import { type ThemeTokens } from '@/src/theme/tokens';
+import { ArrowLeft, TrendingUp, Sprout } from 'lucide-react-native';
 
 export default function AnalyticsScreen() {
   const { theme } = useTheme();
@@ -93,7 +94,7 @@ function ProgressBar({
   label: string;
   percentage: number;
   color: string;
-  theme: any;
+  theme: ThemeTokens;
 }) {
   return (
     <View style={styles.progressWrap}>

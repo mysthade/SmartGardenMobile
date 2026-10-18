@@ -1,10 +1,8 @@
 /**
- * Рядова/секторна логіка редактора зони (у метрах).
+ * Рядова та секторна геометрія мобільного редактора зони.
  *
- * Це мобільний порт apps/web/src/features/zone-editor/lib/zone-geometry.ts.
- * Базова геометрія (кламп, snap, перетворення координат) береться з
- * @smart-garden/validation, а тут додається лише логіка «рядів/секторів» для
- * BED та FIELD, щоб рослини сідали по центру посадкових смуг.
+ * Використовує функції з @smart-garden/validation (ті самі, що й веб),
+ * щоб розрахунки позицій, масштабування та клампування повністю збігалися з вебом.
  */
 
 import type { ZoneType } from '@smart-garden/types';
@@ -12,11 +10,43 @@ import {
   DEFAULT_PLANT_SIZE_M,
   applySnap,
   clampToZone,
+  computePxPerMeter,
+  isInsideAllowedArea,
+  isInsideZone,
+  metersToPixels,
+  pixelsToMeters,
+  resolveZoneSettings,
+  screenToWorld,
   snapToGrid,
+  worldToScreen,
+  type ViewTransform,
+  type WorldPoint,
   type ZoneSettingsInput,
 } from '@smart-garden/validation';
 
 export type MeterPoint = { x: number; y: number };
+export type MeterLine = { x1: number; y1: number; x2: number; y2: number };
+
+export {
+  DEFAULT_PLANT_SIZE_M,
+  applySnap,
+  clampToZone,
+  computePxPerMeter,
+  isInsideAllowedArea,
+  isInsideZone,
+  metersToPixels,
+  pixelsToMeters,
+  resolveZoneSettings,
+  screenToWorld,
+  snapToGrid,
+  worldToScreen,
+  type ViewTransform,
+  type WorldPoint,
+};
+
+/** Аліаси для прямої сумісності з валідаційним пакетом */
+export const snapToGridValue = snapToGrid;
+export const isValidPlantPosition = isInsideAllowedArea;
 
 /** Мінімальна практична відстань між рядами (метри). */
 export const MIN_ROW_SPACING_M = 0.05;
@@ -45,8 +75,63 @@ export function spacingFromRowCount(axisLengthM: number, rowCount: number): numb
   return axisLengthM / Math.max(rowCount, 1);
 }
 
+export function rowCountFromSpacing(axisLengthM: number, spacingM: number): number {
+  const spacing = Math.max(spacingM, MIN_ROW_SPACING_M);
+  return Math.max(1, Math.min(MAX_ROW_COUNT, Math.round(axisLengthM / spacing)));
+}
+
+/** Рядки/роздільники між посадковими смугами (для сітки полотна). */
+export function getEvenRowDividers(params: {
+  widthM: number;
+  heightM: number;
+  rowCount: number;
+  rowDirection: 'horizontal' | 'vertical';
+}): MeterLine[] {
+  const count = Math.max(1, Math.floor(params.rowCount));
+  const lines: MeterLine[] = [];
+
+  if (params.rowDirection === 'horizontal') {
+    for (let i = 1; i < count; i += 1) {
+      const y = (params.heightM * i) / count;
+      lines.push({ x1: 0, y1: y, x2: params.widthM, y2: y });
+    }
+  } else {
+    for (let i = 1; i < count; i += 1) {
+      const x = (params.widthM * i) / count;
+      lines.push({ x1: x, y1: 0, x2: x, y2: params.heightM });
+    }
+  }
+
+  return lines;
+}
+
+export function bedPreviewMeta(
+  settings: ZoneSettingsInput,
+  widthM: number,
+  heightM: number,
+): {
+  rowCount: number;
+  spacingM: number;
+  maxRows: number;
+  direction: 'horizontal' | 'vertical';
+} | null {
+  if (settings.type !== 'BED') {
+    return null;
+  }
+  const direction = settings.rowDirection;
+  const axis = axisLengthForRows(widthM, heightM, direction);
+  const maxRows = maxRowsForAxis(axis);
+  const rowCount = Math.max(1, Math.min(maxRows, Math.floor(settings.rowCount) || 1));
+  return {
+    rowCount,
+    spacingM: spacingFromRowCount(axis, rowCount),
+    maxRows,
+    direction,
+  };
+}
+
 /** Визначає рядову структуру для типу зони (BED або FIELD), або null. */
-export function rowLayoutFor(settings: ZoneSettingsInput): RowLayout | null {
+export function rowLayout(settings: ZoneSettingsInput): RowLayout | null {
   if (settings.type === 'BED') {
     return { count: Math.max(1, Math.floor(settings.rowCount) || 1), direction: settings.rowDirection };
   }
@@ -55,6 +140,8 @@ export function rowLayoutFor(settings: ZoneSettingsInput): RowLayout | null {
   }
   return null;
 }
+
+export const rowLayoutFor = rowLayout;
 
 /** Чи треба прив'язувати рослини до центрів рядів/секторів. */
 export function shouldSnapToRows(settings: ZoneSettingsInput): boolean {
@@ -70,7 +157,7 @@ export function rowStripLengthM(
   heightM: number,
   settings: ZoneSettingsInput,
 ): number | null {
-  const layout = rowLayoutFor(settings);
+  const layout = rowLayout(settings);
   if (!layout) {
     return null;
   }
@@ -104,7 +191,7 @@ export function snapPointToRow(params: {
   heightM: number;
   settings: ZoneSettingsInput;
 }): MeterPoint {
-  const layout = rowLayoutFor(params.settings);
+  const layout = rowLayout(params.settings);
   if (!layout) {
     return { x: params.x, y: params.y };
   }
@@ -127,9 +214,32 @@ export function snapPointToRow(params: {
 }
 
 /**
+ * Клампить центр маркера всередині зони з урахуванням радіуса,
+ * щоб коло не виходило за межі зони [0..widthM, 0..heightM].
+ */
+export function clampMarkerInZone(
+  point: WorldPoint,
+  sizeM: number,
+  widthM: number,
+  heightM: number,
+): WorldPoint {
+  const radius = Math.max(sizeM, 0) / 2;
+  const minX = radius;
+  const maxX = Math.max(radius, widthM - radius);
+  const minY = radius;
+  const maxY = Math.max(radius, heightM - radius);
+  return {
+    x: Math.min(Math.max(point.x, minX), maxX),
+    y: Math.min(Math.max(point.y, minY), maxY),
+  };
+}
+
+/**
  * Обчислює фінальну позицію рослини (метри) з урахуванням:
  * рядів (BED/FIELD), опціонального snap-to-grid і клампу в межі зони.
- * Використовується і при додаванні, і при перетягуванні.
+ *
+ * Центр маркера клампується з урахуванням radius (sizeM / 2),
+ * тому маркер ніколи не вилазить за краї грядки.
  */
 export function placePoint(params: {
   x: number;
@@ -139,8 +249,8 @@ export function placePoint(params: {
   heightM: number;
   zoneType: ZoneType;
   settings: ZoneSettingsInput;
-  snap: boolean;
-  gridStepM: number;
+  snap?: boolean;
+  gridStepM?: number;
 }): MeterPoint {
   let point: MeterPoint = { x: params.x, y: params.y };
   const hasRowLayout = shouldSnapToRows(params.settings);
@@ -155,7 +265,7 @@ export function placePoint(params: {
     });
   }
 
-  if (params.snap) {
+  if (params.snap && params.gridStepM) {
     // Відцентровуємо ряд: snap лише вздовж вільної осі (вздовж ряду).
     if (params.settings.type === 'BED' || params.settings.type === 'FIELD') {
       const direction = params.settings.rowDirection;
@@ -179,13 +289,26 @@ export function placePoint(params: {
     settings: params.settings,
   });
 
-  // Зберігаємо центр ряду по фіксованій осі, щоб кламп не «виштовхував»
-  // маркер з верхнього/нижнього (або крайнього) ряду.
+  const radiusM = Math.max(params.sizeM, 0) / 2;
   if (hasRowLayout && (params.settings.type === 'BED' || params.settings.type === 'FIELD')) {
     if (params.settings.rowDirection === 'horizontal') {
-      return { x: clamped.x, y: point.y };
+      // Горизонтальні ряди: вільна вісь x клампується за clampToZone,
+      // фіксована вісь рядів y клампується в межах [radiusM, heightM - radiusM],
+      // щоб маркер крайнього верхнього/нижнього ряду не обрізався.
+      const clampedY = Math.min(
+        Math.max(point.y, radiusM),
+        Math.max(radiusM, params.heightM - radiusM),
+      );
+      return { x: clamped.x, y: clampedY };
     }
-    return { x: point.x, y: clamped.y };
+    // Вертикальні ряди: вільна вісь y клампується за clampToZone,
+    // фіксована вісь рядів x клампується в межах [radiusM, widthM - radiusM],
+    // щоб маркер крайнього лівого/правого ряду не обрізався.
+    const clampedX = Math.min(
+      Math.max(point.x, radiusM),
+      Math.max(radiusM, params.widthM - radiusM),
+    );
+    return { x: clampedX, y: clamped.y };
   }
 
   return clamped;

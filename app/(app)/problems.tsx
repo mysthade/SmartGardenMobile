@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import {
   ActivityIndicator,
   FlatList,
@@ -12,7 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '@/src/lib/api';
 import { useTheme } from '@/src/theme/theme-context';
-import { AlertTriangle, ArrowLeft, CheckCircle2, ShieldAlert } from 'lucide-react-native';
+import { ArrowLeft, CheckCircle2, ShieldAlert } from 'lucide-react-native';
 
 export default function ProblemsScreen() {
   const { theme } = useTheme();
@@ -87,7 +87,14 @@ export default function ProblemsScreen() {
         renderItem={({ item }) => {
           const isResolved = Boolean(item.resolvedAt);
           return (
-            <View style={[styles.card, { backgroundColor: theme.pn, borderColor: theme.bd }]}>
+            <Pressable
+              onPress={() => {
+                if (item.plantId) {
+                  router.push(`/plants/${item.plantId}` as Href);
+                }
+              }}
+              style={[styles.card, { backgroundColor: theme.pn, borderColor: theme.bd }]}
+            >
               <View style={styles.cardHeader}>
                 <View style={styles.titleRow}>
                   <ShieldAlert size={18} color={isResolved ? theme.ac : '#E74C3C'} />
@@ -112,7 +119,7 @@ export default function ProblemsScreen() {
               {item.description ? (
                 <Text style={[styles.desc, { color: theme.mu }]}>{item.description}</Text>
               ) : null}
-            </View>
+            </Pressable>
           );
         }}
       />

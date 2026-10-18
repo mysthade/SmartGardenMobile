@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { StyleSheet, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LayoutDashboard, Trees, ClipboardList, CloudSun, Menu } from 'lucide-react-native';
 import { useTheme } from '@/src/theme/theme-context';

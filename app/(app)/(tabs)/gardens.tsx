@@ -1,45 +1,40 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Modal,
   Platform,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Layers, Map, Plus } from 'lucide-react-native';
+
 import { api } from '@/src/lib/api';
 import type { ZoneDto } from '@smart-garden/types';
 import { formatApiError } from '@/src/lib/api-errors';
 import { useTheme } from '@/src/theme/theme-context';
-import { ZoneMiniMap } from '@/src/features/zone-editor/components/ZoneMiniMap';
 import {
-  Trees,
-  Map,
-  Plus,
-  Trash2,
-  ChevronDown,
-  ChevronUp,
-  Sprout,
-  Layers,
-  Droplets,
-  Wheat,
-  X,
-  Maximize2,
-  Move,
-} from 'lucide-react-native';
+  STATUS_MAP,
+  ZONE_TYPE_LABEL,
+  genKey,
+  groupPlantsByZone,
+} from '@/src/features/gardens/lib/gardens-helpers';
+import { GardenChips } from '@/src/features/gardens/components/GardenChips';
+import { ZoneCard } from '@/src/features/gardens/components/ZoneCard';
+import { AddGardenModal } from '@/src/features/gardens/components/modals/AddGardenModal';
+import { AddZoneModal } from '@/src/features/gardens/components/modals/AddZoneModal';
+import { AddPlantModal } from '@/src/features/gardens/components/modals/AddPlantModal';
+import { ZoneDetailModal } from '@/src/features/gardens/components/modals/ZoneDetailModal';
+import { HarvestModal } from '@/src/features/gardens/components/modals/HarvestModal';
+import { CareModal } from '@/src/features/gardens/components/modals/CareModal';
 
-function genKey(prefix: string) {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
+export { STATUS_MAP, ZONE_TYPE_LABEL };
 
 function confirmAction(title: string, message: string, onConfirm: () => void) {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -54,28 +49,6 @@ function confirmAction(title: string, message: string, onConfirm: () => void) {
   }
 }
 
-const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
-  PLANNED: { label: 'Заплановано', color: '#7F8C8D', bg: '#EAEDED' },
-  PLANTED: { label: 'Посаджено', color: '#2980B9', bg: '#EBF5FB' },
-  GROWING: { label: 'Росте', color: '#27AE60', bg: '#EAFaf1' },
-  FLOWERING: { label: 'Цвіте', color: '#8E44AD', bg: '#F4ECF7' },
-  FRUITING: { label: 'Плодоносить', color: '#D35400', bg: '#FBEEE6' },
-  HARVESTING: { label: 'Збір урожаю', color: '#D68910', bg: '#FEF9E7' },
-  FINISHED: { label: 'Завершено', color: '#95A5A6', bg: '#F2F4F4' },
-};
-
-/** Канонічні типи зон — мають збігатися з zoneTypeSchema бекенда. */
-export const ZONE_TYPE_LABEL: Record<string, string> = {
-  BED: 'Грядка',
-  GREENHOUSE: 'Теплиця',
-  ORCHARD: 'Сад',
-  FLOWERBED: 'Клумба',
-  FIELD: 'Відкритий ґрунт',
-  OTHER: 'Інше',
-};
-
-const ZONE_TYPES = Object.entries(ZONE_TYPE_LABEL).map(([value, label]) => ({ value, label }));
-
 export default function GardensScreen() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
@@ -83,10 +56,7 @@ export default function GardensScreen() {
 
   const [selectedGardenId, setSelectedGardenId] = useState<string | null>(null);
   const [expandedZones, setExpandedZones] = useState<Record<string, boolean>>({});
-  // Рослина, підсвічена на міні-схемі (тап по рядку у списку).
   const [highlightedPlantId, setHighlightedPlantId] = useState<string | null>(null);
-  // Доступна ширина вмісту картки (для міні-схеми зі збереженням пропорцій).
-  const [contentWidth, setContentWidth] = useState(0);
 
   // Modals state
   const [addGardenOpen, setAddGardenOpen] = useState(false);
@@ -154,18 +124,7 @@ export default function GardensScreen() {
   const plantTypes = plantTypesQuery.data?.data ?? [];
 
   // Group plants by zoneId
-  const plantsByZone = useMemo(() => {
-    const map: Record<string, typeof allPlants> = {};
-    for (const p of allPlants) {
-      if (p.zoneId) {
-        if (!map[p.zoneId]) map[p.zoneId] = [];
-        map[p.zoneId].push(p);
-      }
-    }
-    return map;
-  }, [allPlants]);
-
-  // Рослини поточної зони у модалці деталей (типований доступ без `any`).
+  const plantsByZone = useMemo(() => groupPlantsByZone(allPlants), [allPlants]);
   const detailPlants = detailZone ? (plantsByZone[detailZone.id] ?? []) : [];
 
   // Mutations
@@ -217,7 +176,24 @@ export default function GardensScreen() {
 
   const deleteZoneMutation = useMutation({
     mutationFn: (zoneId: string) => api.deleteZone(zoneId),
-    onSuccess: () => {
+    onMutate: async (zoneId: string) => {
+      await queryClient.cancelQueries({ queryKey: ['zones', activeGardenId] });
+      const previousZones = queryClient.getQueryData(['zones', activeGardenId]);
+      queryClient.setQueryData(['zones', activeGardenId], (old: typeof zonesQuery.data) => {
+        if (!old || !old.data) return old;
+        return {
+          ...old,
+          data: old.data.filter((z) => z.id !== zoneId),
+        };
+      });
+      return { previousZones };
+    },
+    onError: (_err, _zoneId, context) => {
+      if (context?.previousZones) {
+        queryClient.setQueryData(['zones', activeGardenId], context.previousZones);
+      }
+    },
+    onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ['zones', activeGardenId] });
       void queryClient.invalidateQueries({ queryKey: ['plants'] });
     },
@@ -249,7 +225,24 @@ export default function GardensScreen() {
 
   const deletePlantMutation = useMutation({
     mutationFn: (plantId: string) => api.deletePlant(plantId),
-    onSuccess: () => {
+    onMutate: async (plantId: string) => {
+      await queryClient.cancelQueries({ queryKey: ['plants', 'all'] });
+      const previousPlants = queryClient.getQueryData(['plants', 'all']);
+      queryClient.setQueryData(['plants', 'all'], (old: typeof plantsQuery.data) => {
+        if (!old || !old.data) return old;
+        return {
+          ...old,
+          data: old.data.filter((p) => p.id !== plantId),
+        };
+      });
+      return { previousPlants };
+    },
+    onError: (_err, _plantId, context) => {
+      if (context?.previousPlants) {
+        queryClient.setQueryData(['plants', 'all'], context.previousPlants);
+      }
+    },
+    onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ['plants'] });
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
@@ -295,7 +288,7 @@ export default function GardensScreen() {
     },
   });
 
-  const toggleZone = (zoneId: string) => {
+  const toggleZone = useCallback((zoneId: string) => {
     setExpandedZones((prev) => {
       const current = prev[zoneId] !== false; // default true
       return {
@@ -303,11 +296,119 @@ export default function GardensScreen() {
         [zoneId]: !current,
       };
     });
-  };
+  }, []);
 
-  const isZoneExpanded = (zoneId: string) => {
-    return expandedZones[zoneId] !== false; // default true
-  };
+  const isZoneExpanded = useCallback(
+    (zoneId: string) => {
+      return expandedZones[zoneId] !== false; // default true
+    },
+    [expandedZones],
+  );
+
+  const handleDeleteGarden = useCallback(
+    (id: string, name: string) => {
+      confirmAction('Видалити сад?', `Видалити сад "${name}"?`, () =>
+        deleteGardenMutation.mutate(id),
+      );
+    },
+    [deleteGardenMutation],
+  );
+
+  const prefetchZoneLayout = useCallback(
+    (zoneId: string) => {
+      void queryClient.prefetchQuery({
+        queryKey: ['bed-layout', zoneId],
+        queryFn: () => api.getBedLayout(zoneId),
+        staleTime: 30_000,
+      });
+    },
+    [queryClient],
+  );
+
+  const handleOpenEditor = useCallback(
+    (zoneId: string) => {
+      prefetchZoneLayout(zoneId);
+      router.push(`/zones/${zoneId}/editor` as never);
+    },
+    [prefetchZoneLayout],
+  );
+
+  const handleDeleteZone = useCallback(
+    (zoneId: string, zoneNameVal: string) => {
+      confirmAction(
+        'Видалити зону?',
+        `Видалити зону "${zoneNameVal}" разом із рослинами?`,
+        () => deleteZoneMutation.mutate(zoneId),
+      );
+    },
+    [deleteZoneMutation],
+  );
+
+  const handleToggleHighlightPlant = useCallback((plantId: string) => {
+    setHighlightedPlantId((prev) => (prev === plantId ? null : plantId));
+  }, []);
+
+  const handleCarePlant = useCallback((plant: { id: string; name: string }) => {
+    setCarePlant(plant);
+  }, []);
+
+  const handleHarvestPlant = useCallback((plant: { id: string; name: string }) => {
+    setHarvestPlant(plant);
+  }, []);
+
+  const handleDeletePlant = useCallback(
+    (plantId: string, plantNameVal: string) => {
+      confirmAction('Видалити рослину?', `Прибрати "${plantNameVal}" із грядки?`, () =>
+        deletePlantMutation.mutate(plantId),
+      );
+    },
+    [deletePlantMutation],
+  );
+
+  const renderZoneItem = useCallback(
+    ({ item }: { item: ZoneDto }) => {
+      const zonePlants = plantsByZone[item.id] ?? [];
+      const expanded = isZoneExpanded(item.id);
+
+      return (
+        <ZoneCard
+          zone={item}
+          plants={zonePlants}
+          expanded={expanded}
+          highlightedPlantId={highlightedPlantId}
+          theme={theme}
+          onToggleExpand={() => toggleZone(item.id)}
+          onLongPress={() => {
+            prefetchZoneLayout(item.id);
+            setDetailZone(item);
+          }}
+          onAddPlant={() => setAddPlantZoneId(item.id)}
+          onOpenEditor={() => handleOpenEditor(item.id)}
+          onDeleteZone={() => handleDeleteZone(item.id, item.name)}
+          onToggleHighlightPlant={handleToggleHighlightPlant}
+          onCarePlant={handleCarePlant}
+          onHarvestPlant={handleHarvestPlant}
+          onDeletePlant={handleDeletePlant}
+        />
+      );
+    },
+    [
+      plantsByZone,
+      isZoneExpanded,
+      highlightedPlantId,
+      theme,
+      toggleZone,
+      prefetchZoneLayout,
+      handleOpenEditor,
+      handleDeleteZone,
+      handleToggleHighlightPlant,
+      handleCarePlant,
+      handleHarvestPlant,
+      handleDeletePlant,
+    ],
+  );
+
+  const keyExtractor = useCallback((item: ZoneDto) => item.id, []);
 
   return (
     <View style={[styles.screen, { backgroundColor: theme.bg, paddingTop: insets.top + 16 }]}>
@@ -329,51 +430,13 @@ export default function GardensScreen() {
       </View>
 
       {/* Gardens Selector Row */}
-      {gardens.length > 0 ? (
-        <View style={styles.selectorWrap}>
-          <FlatList
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            data={gardens}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.gardensList}
-            renderItem={({ item }) => {
-              const isSelected = item.id === activeGardenId;
-              return (
-                <Pressable
-                  style={[
-                    styles.gardenChip,
-                    {
-                      backgroundColor: isSelected ? theme.ac : theme.pn,
-                      borderColor: isSelected ? theme.ac : theme.bd,
-                    },
-                  ]}
-                  onPress={() => setSelectedGardenId(item.id)}
-                >
-                  <Trees size={16} color={isSelected ? '#ffffff' : theme.mu} />
-                  <Text
-                    style={[styles.gardenChipText, { color: isSelected ? '#ffffff' : theme.tx }]}
-                  >
-                    {item.name}
-                  </Text>
-                  {isSelected && gardens.length > 1 ? (
-                    <Pressable
-                      hitSlop={8}
-                      onPress={() =>
-                        confirmAction('Видалити сад?', `Видалити сад "${item.name}"?`, () =>
-                          deleteGardenMutation.mutate(item.id),
-                        )
-                      }
-                    >
-                      <Trash2 size={13} color="#ffffff" style={{ marginLeft: 4, opacity: 0.8 }} />
-                    </Pressable>
-                  ) : null}
-                </Pressable>
-              );
-            }}
-          />
-        </View>
-      ) : null}
+      <GardenChips
+        gardens={gardens}
+        activeGardenId={activeGardenId}
+        theme={theme}
+        onSelectGarden={setSelectedGardenId}
+        onDeleteGarden={handleDeleteGarden}
+      />
 
       {/* Zones Header with "+ Додати зону" */}
       <View style={styles.zonesHeader}>
@@ -398,9 +461,14 @@ export default function GardensScreen() {
       {/* Zones and Plants List */}
       <FlatList
         data={zones}
-        keyExtractor={(item) => item.id}
+        keyExtractor={keyExtractor}
+        renderItem={renderZoneItem}
         contentContainerStyle={styles.zonesContent}
         showsVerticalScrollIndicator={false}
+        removeClippedSubviews={true}
+        initialNumToRender={5}
+        maxToRenderPerBatch={5}
+        windowSize={5}
         refreshControl={
           <RefreshControl
             refreshing={gardensQuery.isRefetching || zonesQuery.isRefetching}
@@ -440,736 +508,126 @@ export default function GardensScreen() {
             </View>
           )
         }
-        renderItem={({ item }) => {
-          const zonePlants = plantsByZone[item.id] ?? [];
-          const expanded = isZoneExpanded(item.id);
-
-          return (
-            <View style={[styles.zoneBlock, { backgroundColor: theme.pn, borderColor: theme.bd }]}>
-              {/* Zone Header Bar */}
-              <View style={styles.zoneHeaderBar}>
-                <Pressable
-                  style={styles.zoneHeaderLeft}
-                  onPress={() => toggleZone(item.id)}
-                  onLongPress={() => setDetailZone(item)}
-                >
-                  <View style={styles.zoneIconWrap}>
-                    <Sprout size={18} color={theme.ac} />
-                  </View>
-                  <View style={styles.zoneInfo}>
-                    <Text style={[styles.zoneName, { color: theme.tx }]}>{item.name}</Text>
-                    <Text style={[styles.zoneMeta, { color: theme.mu }]}>
-                      {`Тип: ${ZONE_TYPE_LABEL[item.type] ?? item.type ?? 'Грядка'}`}
-                      {item.area ? ` • ${item.area} м²` : ''}
-                      {` • Рослин: ${zonePlants.length}`}
-                    </Text>
-                  </View>
-                </Pressable>
-
-                {/* Actions on Zone */}
-                <View style={styles.zoneActions}>
-                  <Pressable
-                    style={[styles.plantInZoneBtn, { backgroundColor: theme.ac }]}
-                    onPress={() => setAddPlantZoneId(item.id)}
-                  >
-                    <Plus size={14} color="#fff" />
-                    <Text style={styles.plantInZoneText}>Рослина</Text>
-                  </Pressable>
-
-                  <Pressable
-                    hitSlop={8}
-                    style={styles.actionIconBtn}
-                    accessibilityLabel="Відкрити редактор зони"
-                    onPress={() => router.push(`/(app)/zones/${item.id}/editor` as never)}
-                  >
-                    <Maximize2 size={16} color={theme.ac} />
-                  </Pressable>
-
-                  <Pressable
-                    hitSlop={8}
-                    style={styles.deleteZoneBtn}
-                    onPress={() =>
-                      confirmAction(
-                        'Видалити зону?',
-                        `Видалити зону "${item.name}" разом із рослинами?`,
-                        () => deleteZoneMutation.mutate(item.id),
-                      )
-                    }
-                  >
-                    <Trash2 size={16} color="#C0392B" />
-                  </Pressable>
-
-                  <Pressable
-                    hitSlop={8}
-                    style={styles.toggleChevronBtn}
-                    onPress={() => toggleZone(item.id)}
-                  >
-                    {expanded ? (
-                      <ChevronUp size={20} color={theme.mu} />
-                    ) : (
-                      <ChevronDown size={20} color={theme.mu} />
-                    )}
-                  </Pressable>
-                </View>
-              </View>
-
-              {/* Plants in this Zone */}
-              {expanded ? (
-                <View
-                  style={[styles.plantsContainer, { borderTopColor: theme.bd }]}
-                  onLayout={(e) => setContentWidth(e.nativeEvent.layout.width - 24)}
-                >
-                  {contentWidth > 0 ? (
-                    <ZoneMiniMap
-                      zoneId={item.id}
-                      availableWidth={contentWidth}
-                      highlightedId={highlightedPlantId}
-                      onPress={() => router.push(`/(app)/zones/${item.id}/editor` as never)}
-                      theme={theme}
-                    />
-                  ) : null}
-                  {zonePlants.length === 0 ? (
-                    <View style={styles.noPlantsWrap}>
-                      <Text style={[styles.noPlantsText, { color: theme.mu }]}>
-                        У цій зоні ще немає висаджених рослин
-                      </Text>
-                      <Pressable
-                        style={[styles.smallAddPlantBtn, { borderColor: theme.ac }]}
-                        onPress={() => setAddPlantZoneId(item.id)}
-                      >
-                        <Plus size={14} color={theme.ac} />
-                        <Text style={[styles.smallAddPlantText, { color: theme.ac }]}>
-                          Посадити першу рослину
-                        </Text>
-                      </Pressable>
-                    </View>
-                  ) : (
-                    zonePlants.map((plant) => {
-                      const st = STATUS_MAP[plant.status] ?? STATUS_MAP.GROWING;
-                      return (
-                        <View
-                          key={plant.id}
-                          style={[
-                            styles.plantCard,
-                            {
-                              backgroundColor: theme.name === 'dark' ? '#17251c' : '#f9fcf9',
-                              borderColor: theme.bd,
-                            },
-                          ]}
-                        >
-                          <Pressable
-                            style={styles.plantTopRow}
-                            onPress={() =>
-                              setHighlightedPlantId((prev) =>
-                                prev === plant.id ? null : plant.id,
-                              )
-                            }
-                          >
-                            <View style={styles.plantTitleWrap}>
-                              <Text style={[styles.plantNameText, { color: theme.tx }]}>
-                                {plant.name}
-                              </Text>
-                              {plant.variety ? (
-                                <Text style={[styles.plantVarietyText, { color: theme.mu }]}>
-                                  Сорт: {plant.variety}
-                                </Text>
-                              ) : null}
-                            </View>
-                            <View style={[styles.statusBadge, { backgroundColor: st.bg }]}>
-                              <Text style={[styles.statusBadgeText, { color: st.color }]}>
-                                {st.label}
-                              </Text>
-                            </View>
-                          </Pressable>
-
-                          <View style={styles.plantMetaRow}>
-                            <Text style={[styles.plantQty, { color: theme.mu }]}>
-                              Кількість: {plant.quantity} шт.
-                            </Text>
-                          </View>
-
-                          {/* Quick Plant Actions */}
-                          <View style={[styles.plantButtonsRow, { borderTopColor: theme.bd }]}>
-                            <Pressable
-                              style={styles.pActionBtn}
-                              onPress={() => setCarePlant({ id: plant.id, name: plant.name })}
-                            >
-                              <Droplets size={14} color="#2980B9" />
-                              <Text style={[styles.pActionText, { color: '#2980B9' }]}>Догляд</Text>
-                            </Pressable>
-
-                            <Pressable
-                              style={styles.pActionBtn}
-                              onPress={() => setHarvestPlant({ id: plant.id, name: plant.name })}
-                            >
-                              <Wheat size={14} color="#D35400" />
-                              <Text style={[styles.pActionText, { color: '#D35400' }]}>Урожай</Text>
-                            </Pressable>
-
-                            <Pressable
-                              style={styles.pActionBtn}
-                              onPress={() =>
-                                confirmAction(
-                                  'Видалити рослину?',
-                                  `Прибрати "${plant.name}" із грядки?`,
-                                  () => deletePlantMutation.mutate(plant.id),
-                                )
-                              }
-                            >
-                              <Trash2 size={14} color="#C0392B" />
-                              <Text style={[styles.pActionText, { color: '#C0392B' }]}>Видалити</Text>
-                            </Pressable>
-                          </View>
-                        </View>
-                      );
-                    })
-                  )}
-                </View>
-              ) : null}
-            </View>
-          );
-        }}
       />
 
-      {/* ================= MODAL: Додати рослину ================= */}
-      <Modal visible={Boolean(addPlantZoneId)} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { backgroundColor: theme.pn, borderColor: theme.bd }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: theme.tx }]}>Посадити нову рослину</Text>
-              <Pressable hitSlop={10} onPress={() => setAddPlantZoneId(null)}>
-                <X size={20} color={theme.mu} />
-              </Pressable>
-            </View>
+      {/* ================= Deferred / Lazy Mounted Modals ================= */}
+      {addPlantZoneId ? (
+        <AddPlantModal
+          open={Boolean(addPlantZoneId)}
+          plantTypeId={plantTypeId}
+          plantName={plantName}
+          plantVariety={plantVariety}
+          plantQuantity={plantQuantity}
+          plantStatus={plantStatus}
+          plantTypes={plantTypes}
+          loading={createPlantMutation.isPending}
+          theme={theme}
+          onChangePlantTypeId={(id, defaultName) => {
+            setPlantTypeId(id);
+            if (!plantName && defaultName) setPlantName(defaultName);
+          }}
+          onChangePlantName={setPlantName}
+          onChangePlantVariety={setPlantVariety}
+          onChangePlantQuantity={setPlantQuantity}
+          onChangePlantStatus={setPlantStatus}
+          onSubmit={() => createPlantMutation.mutate()}
+          onClose={() => setAddPlantZoneId(null)}
+        />
+      ) : null}
 
-            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
-              <Text style={[styles.fieldLabel, { color: theme.mu }]}>Оберіть культуру</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-                <View style={styles.typesRow}>
-                  {plantTypes.slice(0, 15).map((pt) => {
-                    const isSelected = plantTypeId === pt.id;
-                    return (
-                      <Pressable
-                        key={pt.id}
-                        style={[
-                          styles.typeChip,
-                          {
-                            backgroundColor: isSelected ? theme.ac : theme.bg,
-                            borderColor: isSelected ? theme.ac : theme.bd,
-                          },
-                        ]}
-                        onPress={() => {
-                          setPlantTypeId(pt.id);
-                          if (!plantName) setPlantName(pt.name);
-                        }}
-                      >
-                        <Text style={[styles.typeChipText, { color: isSelected ? '#fff' : theme.tx }]}>
-                          {pt.name}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </ScrollView>
+      {detailZone ? (
+        <ZoneDetailModal
+          zone={detailZone}
+          plants={detailPlants}
+          theme={theme}
+          onOpenEditor={(zid) => {
+            setDetailZone(null);
+            handleOpenEditor(zid);
+          }}
+          onAddPlant={(zid) => {
+            setDetailZone(null);
+            setAddPlantZoneId(zid);
+          }}
+          onCarePlant={(plant) => {
+            setDetailZone(null);
+            handleCarePlant(plant);
+          }}
+          onHarvestPlant={(plant) => {
+            setDetailZone(null);
+            handleHarvestPlant(plant);
+          }}
+          onDeletePlant={(pid, pname) => {
+            setDetailZone(null);
+            handleDeletePlant(pid, pname);
+          }}
+          onClose={() => setDetailZone(null)}
+        />
+      ) : null}
 
-              <Text style={[styles.fieldLabel, { color: theme.mu }]}>Назва рослини *</Text>
-              <TextInput
-                style={[styles.input, { color: theme.tx, borderColor: theme.bd, backgroundColor: theme.bg }]}
-                value={plantName}
-                onChangeText={setPlantName}
-                placeholder="напр. Томат Чері"
-                placeholderTextColor={theme.mu}
-              />
+      {addGardenOpen ? (
+        <AddGardenModal
+          open={addGardenOpen}
+          name={gardenName}
+          location={gardenLocation}
+          area={gardenArea}
+          loading={createGardenMutation.isPending}
+          theme={theme}
+          onChangeName={setGardenName}
+          onChangeLocation={setGardenLocation}
+          onChangeArea={setGardenArea}
+          onSubmit={() => createGardenMutation.mutate()}
+          onClose={() => setAddGardenOpen(false)}
+        />
+      ) : null}
 
-              <Text style={[styles.fieldLabel, { color: theme.mu }]}>Сорт / різновид</Text>
-              <TextInput
-                style={[styles.input, { color: theme.tx, borderColor: theme.bd, backgroundColor: theme.bg }]}
-                value={plantVariety}
-                onChangeText={setPlantVariety}
-                placeholder="напр. Сливка рожева"
-                placeholderTextColor={theme.mu}
-              />
+      {addZoneOpen ? (
+        <AddZoneModal
+          open={addZoneOpen}
+          name={zoneName}
+          type={zoneType}
+          width={zoneWidth}
+          height={zoneHeight}
+          error={zoneError}
+          loading={createZoneMutation.isPending}
+          theme={theme}
+          onChangeName={setZoneName}
+          onChangeType={setZoneType}
+          onChangeWidth={setZoneWidth}
+          onChangeHeight={setZoneHeight}
+          onSubmit={() => createZoneMutation.mutate()}
+          onClose={() => setAddZoneOpen(false)}
+        />
+      ) : null}
 
-              <Text style={[styles.fieldLabel, { color: theme.mu }]}>Кількість саджанців</Text>
-              <TextInput
-                style={[styles.input, { color: theme.tx, borderColor: theme.bd, backgroundColor: theme.bg }]}
-                value={plantQuantity}
-                onChangeText={setPlantQuantity}
-                keyboardType="numeric"
-                placeholder="1"
-                placeholderTextColor={theme.mu}
-              />
+      {harvestPlant ? (
+        <HarvestModal
+          plant={harvestPlant}
+          qty={harvestQty}
+          unit={harvestUnit}
+          notes={harvestNotes}
+          loading={createHarvestMutation.isPending}
+          theme={theme}
+          onChangeQty={setHarvestQty}
+          onChangeUnit={setHarvestUnit}
+          onChangeNotes={setHarvestNotes}
+          onSubmit={() => createHarvestMutation.mutate()}
+          onClose={() => setHarvestPlant(null)}
+        />
+      ) : null}
 
-              <Text style={[styles.fieldLabel, { color: theme.mu }]}>Статус</Text>
-              <View style={styles.statusChipsRow}>
-                {['PLANTED', 'GROWING', 'FRUITING'].map((st) => (
-                  <Pressable
-                    key={st}
-                    style={[
-                      styles.statusPill,
-                      {
-                        backgroundColor: plantStatus === st ? theme.ac : theme.bg,
-                        borderColor: plantStatus === st ? theme.ac : theme.bd,
-                      },
-                    ]}
-                    onPress={() => setPlantStatus(st)}
-                  >
-                    <Text style={{ color: plantStatus === st ? '#fff' : theme.tx, fontSize: 12, fontWeight: '600' }}>
-                      {STATUS_MAP[st]?.label ?? st}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            </ScrollView>
-
-            <Pressable
-              style={[styles.submitModalBtn, { backgroundColor: theme.ac, opacity: !plantName.trim() ? 0.6 : 1 }]}
-              disabled={!plantName.trim() || createPlantMutation.isPending}
-              onPress={() => createPlantMutation.mutate()}
-            >
-              {createPlantMutation.isPending ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.submitModalBtnText}>Посадити в грядку</Text>
-              )}
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
-
-      {/* ================= MODAL: Деталі зони (як на веб-версії /zones/[zoneId]) ================= */}
-      <Modal visible={Boolean(detailZone)} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { backgroundColor: theme.pn, borderColor: theme.bd, maxHeight: '90%' }]}>
-            <View style={styles.modalHeader}>
-              <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Sprout size={20} color={theme.ac} />
-                  <Text style={[styles.modalTitle, { color: theme.tx }]}>
-                    {detailZone?.name ?? 'Зона'}
-                  </Text>
-                </View>
-                <Text style={[styles.muted, { color: theme.mu, marginTop: 2, fontSize: 12 }]}>
-                  {detailZone?.type ? `Тип: ${ZONE_TYPE_LABEL[detailZone.type] ?? detailZone.type}` : 'Грядка'}
-                  {detailZone?.area ? ` • Площа: ${detailZone.area} м²` : ''}
-                  {detailZone?.width && detailZone?.height ? ` • ${detailZone.width} × ${detailZone.height} м` : ''}
-                </Text>
-              </View>
-              <Pressable hitSlop={10} onPress={() => setDetailZone(null)}>
-                <X size={20} color={theme.mu} />
-              </Pressable>
-            </View>
-
-            <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
-              <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
-                <Pressable
-                  style={[styles.smallAddPlantBtn, { flex: 1, backgroundColor: theme.ac, borderColor: theme.ac, paddingVertical: 10, justifyContent: 'center' }]}
-                  onPress={() => {
-                    const zid = detailZone?.id;
-                    setDetailZone(null);
-                    if (zid) router.push(`/(app)/zones/${zid}/editor` as never);
-                  }}
-                >
-                  <Move size={16} color="#fff" />
-                  <Text style={[styles.smallAddPlantText, { color: '#fff', fontWeight: '700' }]}>
-                    Редактор зони
-                  </Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.smallAddPlantBtn, { flex: 1, backgroundColor: theme.ac, borderColor: theme.ac, paddingVertical: 10, justifyContent: 'center' }]}
-                  onPress={() => {
-                    const zid = detailZone?.id;
-                    setDetailZone(null);
-                    setAddPlantZoneId(zid ?? null);
-                  }}
-                >
-                  <Plus size={16} color="#fff" />
-                  <Text style={[styles.smallAddPlantText, { color: '#fff', fontWeight: '700' }]}>
-                    Посадити нову рослину
-                  </Text>
-                </Pressable>
-              </View>
-
-              <Text style={[styles.fieldLabel, { color: theme.tx, fontWeight: '700', marginBottom: 8 }]}>
-                Рослини у цій зоні ({detailPlants.length}):
-              </Text>
-
-              {detailPlants.length === 0 ? (
-                <View style={[styles.emptyCard, { backgroundColor: theme.bg, borderColor: theme.bd, paddingVertical: 24 }]}>
-                  <Sprout size={32} color={theme.mu} />
-                  <Text style={[styles.muted, { color: theme.mu, marginTop: 6 }]}>
-                    У цій зоні ще немає висаджених рослин
-                  </Text>
-                </View>
-              ) : (
-                detailPlants.map((plant) => {
-                  const st = STATUS_MAP[plant.status] ?? STATUS_MAP.GROWING;
-                  return (
-                    <View
-                      key={plant.id}
-                      style={[
-                        styles.plantCard,
-                        {
-                          backgroundColor: theme.name === 'dark' ? '#17251c' : '#f9fcf9',
-                          borderColor: theme.bd,
-                          marginBottom: 10,
-                        },
-                      ]}
-                    >
-                      <View style={styles.plantTopRow}>
-                        <View style={styles.plantTitleWrap}>
-                          <Text style={[styles.plantNameText, { color: theme.tx }]}>
-                            {plant.name}
-                          </Text>
-                          {plant.variety ? (
-                            <Text style={[styles.plantVarietyText, { color: theme.mu }]}>
-                              Сорт: {plant.variety}
-                            </Text>
-                          ) : null}
-                        </View>
-                        <View style={[styles.statusBadge, { backgroundColor: st.bg }]}>
-                          <Text style={[styles.statusBadgeText, { color: st.color }]}>
-                            {st.label}
-                          </Text>
-                        </View>
-                      </View>
-
-                      <View style={styles.plantMetaRow}>
-                        <Text style={[styles.plantQty, { color: theme.mu }]}>
-                          Кількість: {plant.quantity ?? 1} шт.
-                        </Text>
-                      </View>
-
-                      <View style={[styles.plantButtonsRow, { borderTopColor: theme.bd }]}>
-                        <Pressable
-                          style={styles.pActionBtn}
-                          onPress={() => {
-                            setDetailZone(null);
-                            setHarvestPlant({ id: plant.id, name: plant.name });
-                          }}
-                        >
-                          <Wheat size={14} color="#D35400" />
-                          <Text style={[styles.pActionText, { color: '#D35400' }]}>Збір</Text>
-                        </Pressable>
-
-                        <Pressable
-                          style={styles.pActionBtn}
-                          onPress={() => {
-                            setDetailZone(null);
-                            setCarePlant({ id: plant.id, name: plant.name });
-                          }}
-                        >
-                          <Droplets size={14} color="#2980B9" />
-                          <Text style={[styles.pActionText, { color: '#2980B9' }]}>Догляд</Text>
-                        </Pressable>
-
-                        <Pressable
-                          style={styles.pActionBtn}
-                          onPress={() =>
-                            confirmAction('Видалити рослину?', `Видалити "${plant.name}"?`, () =>
-                              deletePlantMutation.mutate(plant.id),
-                            )
-                          }
-                        >
-                          <Trash2 size={14} color="#C0392B" />
-                          <Text style={[styles.pActionText, { color: '#C0392B' }]}>Видалити</Text>
-                        </Pressable>
-                      </View>
-                    </View>
-                  );
-                })
-              )}
-            </ScrollView>
-
-            <Pressable
-              style={[styles.submitModalBtn, { backgroundColor: theme.pn, borderColor: theme.bd, borderWidth: 1, marginTop: 12 }]}
-              onPress={() => setDetailZone(null)}
-            >
-              <Text style={[styles.submitModalBtnText, { color: theme.tx }]}>Закрити</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
-
-      {/* ================= MODAL: Додати сад ================= */}
-      <Modal visible={addGardenOpen} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { backgroundColor: theme.pn, borderColor: theme.bd }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: theme.tx }]}>Створити новий сад</Text>
-              <Pressable hitSlop={10} onPress={() => setAddGardenOpen(false)}>
-                <X size={20} color={theme.mu} />
-              </Pressable>
-            </View>
-
-            <Text style={[styles.fieldLabel, { color: theme.mu }]}>Назва саду *</Text>
-            <TextInput
-              style={[styles.input, { color: theme.tx, borderColor: theme.bd, backgroundColor: theme.bg }]}
-              value={gardenName}
-              onChangeText={setGardenName}
-              placeholder="напр. Дача у Вишгороді"
-              placeholderTextColor={theme.mu}
-            />
-
-            <Text style={[styles.fieldLabel, { color: theme.mu }]}>Локація / місто</Text>
-            <TextInput
-              style={[styles.input, { color: theme.tx, borderColor: theme.bd, backgroundColor: theme.bg }]}
-              value={gardenLocation}
-              onChangeText={setGardenLocation}
-              placeholder="напр. Київська область"
-              placeholderTextColor={theme.mu}
-            />
-
-            <Text style={[styles.fieldLabel, { color: theme.mu }]}>Загальна площа (м²)</Text>
-            <TextInput
-              style={[styles.input, { color: theme.tx, borderColor: theme.bd, backgroundColor: theme.bg }]}
-              value={gardenArea}
-              onChangeText={setGardenArea}
-              keyboardType="numeric"
-              placeholder="напр. 600"
-              placeholderTextColor={theme.mu}
-            />
-
-            <Pressable
-              style={[styles.submitModalBtn, { backgroundColor: theme.ac, opacity: !gardenName.trim() ? 0.6 : 1 }]}
-              disabled={!gardenName.trim() || createGardenMutation.isPending}
-              onPress={() => createGardenMutation.mutate()}
-            >
-              {createGardenMutation.isPending ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.submitModalBtnText}>Створити сад</Text>
-              )}
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
-
-      {/* ================= MODAL: Додати зону ================= */}
-      <Modal visible={addZoneOpen} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { backgroundColor: theme.pn, borderColor: theme.bd }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: theme.tx }]}>Додати зону до саду</Text>
-              <Pressable hitSlop={10} onPress={() => setAddZoneOpen(false)}>
-                <X size={20} color={theme.mu} />
-              </Pressable>
-            </View>
-
-            <Text style={[styles.fieldLabel, { color: theme.mu }]}>Назва зони *</Text>
-            <TextInput
-              style={[styles.input, { color: theme.tx, borderColor: theme.bd, backgroundColor: theme.bg }]}
-              value={zoneName}
-              onChangeText={setZoneName}
-              placeholder="напр. Теплиця з перцем"
-              placeholderTextColor={theme.mu}
-            />
-
-            <Text style={[styles.fieldLabel, { color: theme.mu }]}>Тип зони</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-              <View style={styles.typesRow}>
-                {ZONE_TYPES.map((zt) => {
-                  const isSel = zoneType === zt.value;
-                  return (
-                    <Pressable
-                      key={zt.value}
-                      style={[
-                        styles.typeChip,
-                        {
-                          backgroundColor: isSel ? theme.ac : theme.bg,
-                          borderColor: isSel ? theme.ac : theme.bd,
-                        },
-                      ]}
-                      onPress={() => setZoneType(zt.value)}
-                    >
-                      <Text style={[styles.typeChipText, { color: isSel ? '#fff' : theme.tx }]}>
-                        {zt.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </ScrollView>
-
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.fieldLabel, { color: theme.mu }]}>Ширина (м)</Text>
-                <TextInput
-                  style={[styles.input, { color: theme.tx, borderColor: theme.bd, backgroundColor: theme.bg }]}
-                  value={zoneWidth}
-                  onChangeText={setZoneWidth}
-                  keyboardType="numeric"
-                  placeholder="3"
-                  placeholderTextColor={theme.mu}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.fieldLabel, { color: theme.mu }]}>Довжина (м)</Text>
-                <TextInput
-                  style={[styles.input, { color: theme.tx, borderColor: theme.bd, backgroundColor: theme.bg }]}
-                  value={zoneHeight}
-                  onChangeText={setZoneHeight}
-                  keyboardType="numeric"
-                  placeholder="6"
-                  placeholderTextColor={theme.mu}
-                />
-              </View>
-            </View>
-
-            {zoneError ? (
-              <Text style={[styles.zoneError, { color: theme.danger }]}>{zoneError}</Text>
-            ) : null}
-
-            <Pressable
-              style={[styles.submitModalBtn, { backgroundColor: theme.ac, opacity: !zoneName.trim() ? 0.6 : 1 }]}
-              disabled={!zoneName.trim() || createZoneMutation.isPending}
-              onPress={() => createZoneMutation.mutate()}
-            >
-              {createZoneMutation.isPending ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.submitModalBtnText}>Створити зону</Text>
-              )}
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
-
-      {/* ================= MODAL: Збір урожаю ================= */}
-      <Modal visible={Boolean(harvestPlant)} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { backgroundColor: theme.pn, borderColor: theme.bd }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: theme.tx }]}>
-                Зафіксувати урожай: {harvestPlant?.name}
-              </Text>
-              <Pressable hitSlop={10} onPress={() => setHarvestPlant(null)}>
-                <X size={20} color={theme.mu} />
-              </Pressable>
-            </View>
-
-            <Text style={[styles.fieldLabel, { color: theme.mu }]}>Кількість *</Text>
-            <TextInput
-              style={[styles.input, { color: theme.tx, borderColor: theme.bd, backgroundColor: theme.bg }]}
-              value={harvestQty}
-              onChangeText={setHarvestQty}
-              keyboardType="numeric"
-              placeholder="напр. 5"
-              placeholderTextColor={theme.mu}
-            />
-
-            <Text style={[styles.fieldLabel, { color: theme.mu }]}>Одиниця виміру</Text>
-            <View style={styles.statusChipsRow}>
-              {(
-                [
-                  { val: 'PIECE', label: 'Штук' },
-                { val: 'GRAM', label: 'Грам' },
-                { val: 'LITER', label: 'Літрів' },
-                ] as const).map((u) => (
-                <Pressable
-                  key={u.val}
-                  style={[
-                    styles.statusPill,
-                    {
-                      backgroundColor: harvestUnit === u.val ? '#D35400' : theme.bg,
-                      borderColor: harvestUnit === u.val ? '#D35400' : theme.bd,
-                    },
-                  ]}
-                  onPress={() => setHarvestUnit(u.val)}
-                >
-                  <Text style={{ color: harvestUnit === u.val ? '#fff' : theme.tx, fontSize: 13, fontWeight: '600' }}>
-                    {u.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-
-            <Text style={[styles.fieldLabel, { color: theme.mu }]}>Нотатка про якість</Text>
-            <TextInput
-              style={[styles.input, { color: theme.tx, borderColor: theme.bd, backgroundColor: theme.bg }]}
-              value={harvestNotes}
-              onChangeText={setHarvestNotes}
-              placeholder="Стиглі, солодкі плоди"
-              placeholderTextColor={theme.mu}
-            />
-
-            <Pressable
-              style={[styles.submitModalBtn, { backgroundColor: '#D35400', opacity: !harvestQty.trim() ? 0.6 : 1 }]}
-              disabled={!harvestQty.trim() || createHarvestMutation.isPending}
-              onPress={() => createHarvestMutation.mutate()}
-            >
-              {createHarvestMutation.isPending ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.submitModalBtnText}>Зберегти запис урожаю</Text>
-              )}
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
-
-      {/* ================= MODAL: Догляд / Полив ================= */}
-      <Modal visible={Boolean(carePlant)} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { backgroundColor: theme.pn, borderColor: theme.bd }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: theme.tx }]}>
-                Зафіксувати догляд: {carePlant?.name}
-              </Text>
-              <Pressable hitSlop={10} onPress={() => setCarePlant(null)}>
-                <X size={20} color={theme.mu} />
-              </Pressable>
-            </View>
-
-            <Text style={[styles.fieldLabel, { color: theme.mu }]}>Тип операції</Text>
-            <View style={styles.statusChipsRow}>
-              {[
-                { val: 'WATERING', label: 'Полив 💧' },
-                { val: 'FERTILIZING', label: 'Добрива 🧪' },
-                { val: 'WEEDING', label: 'Прополка 🌿' },
-                { val: 'PRUNING', label: 'Обрізка ✂️' },
-              ].map((c) => (
-                <Pressable
-                  key={c.val}
-                  style={[
-                    styles.statusPill,
-                    {
-                      backgroundColor: careType === c.val ? '#2980B9' : theme.bg,
-                      borderColor: careType === c.val ? '#2980B9' : theme.bd,
-                    },
-                  ]}
-                  onPress={() => setCareType(c.val)}
-                >
-                  <Text style={{ color: careType === c.val ? '#fff' : theme.tx, fontSize: 12, fontWeight: '600' }}>
-                    {c.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-
-            <Text style={[styles.fieldLabel, { color: theme.mu }]}>Коментар</Text>
-            <TextInput
-              style={[styles.input, { color: theme.tx, borderColor: theme.bd, backgroundColor: theme.bg }]}
-              value={careNotes}
-              onChangeText={setCareNotes}
-              placeholder="Полив теплою водою під корінь"
-              placeholderTextColor={theme.mu}
-            />
-
-            <Pressable
-              style={[styles.submitModalBtn, { backgroundColor: '#2980B9' }]}
-              disabled={createCareMutation.isPending}
-              onPress={() => createCareMutation.mutate()}
-            >
-              {createCareMutation.isPending ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.submitModalBtnText}>Зафіксувати догляд</Text>
-              )}
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
+      {carePlant ? (
+        <CareModal
+          plant={carePlant}
+          type={careType}
+          notes={careNotes}
+          loading={createCareMutation.isPending}
+          theme={theme}
+          onChangeType={setCareType}
+          onChangeNotes={setCareNotes}
+          onSubmit={() => createCareMutation.mutate()}
+          onClose={() => setCarePlant(null)}
+        />
+      ) : null}
     </View>
   );
 }
@@ -1194,18 +652,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   addGardenBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-  selectorWrap: { marginBottom: 14 },
-  gardensList: { paddingHorizontal: 18, gap: 8 },
-  gardenChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-  },
-  gardenChipText: { fontSize: 14, fontWeight: '600' },
   zonesHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1226,99 +672,6 @@ const styles = StyleSheet.create({
   },
   addZoneBtnText: { fontSize: 12, fontWeight: '700' },
   zonesContent: { paddingHorizontal: 18, paddingBottom: 50 },
-  zoneBlock: {
-    borderRadius: 18,
-    borderWidth: 1,
-    marginBottom: 12,
-    overflow: 'hidden',
-  },
-  zoneHeaderBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-    gap: 12,
-  },
-  zoneHeaderLeft: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  zoneIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: '#eaf6ee',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  zoneInfo: { flex: 1 },
-  zoneName: { fontSize: 16, fontWeight: '700' },
-  zoneMeta: { fontSize: 12, marginTop: 2 },
-  zoneActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  plantInZoneBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-  },
-  plantInZoneText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-  actionIconBtn: { padding: 6, borderRadius: 8 },
-  deleteZoneBtn: { padding: 4 },
-  toggleChevronBtn: { padding: 4, borderRadius: 8 },
-  plantsContainer: {
-    borderTopWidth: 1,
-    padding: 12,
-    gap: 10,
-  },
-  noPlantsWrap: {
-    alignItems: 'center',
-    paddingVertical: 14,
-    gap: 8,
-  },
-  noPlantsText: { fontSize: 13 },
-  smallAddPlantBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    borderWidth: 1,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-  },
-  smallAddPlantText: { fontSize: 12, fontWeight: '700' },
-  plantCard: {
-    padding: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    gap: 8,
-  },
-  plantTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  plantTitleWrap: { flex: 1 },
-  plantNameText: { fontSize: 15, fontWeight: '700' },
-  plantVarietyText: { fontSize: 12, marginTop: 2 },
-  statusBadge: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 8,
-  },
-  statusBadgeText: { fontSize: 11, fontWeight: '700' },
-  plantMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  plantQty: { fontSize: 12 },
-  plantButtonsRow: {
-    flexDirection: 'row',
-    borderTopWidth: 1,
-    paddingTop: 8,
-    justifyContent: 'space-around',
-  },
-  pActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: 8 },
-  pActionText: { fontSize: 12, fontWeight: '600' },
   emptyCard: {
     padding: 30,
     borderRadius: 18,
@@ -1341,57 +694,4 @@ const styles = StyleSheet.create({
   },
   createFirstBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   center: { padding: 40, alignItems: 'center', justifyContent: 'center' },
-
-  // Modal styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    justifyContent: 'flex-end',
-  },
-  modalSheet: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderWidth: 1,
-    padding: 20,
-    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  modalTitle: { fontSize: 18, fontWeight: '700' },
-  fieldLabel: { fontSize: 13, fontWeight: '600', marginBottom: 6, marginTop: 8 },
-  input: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
-  },
-  typesRow: { flexDirection: 'row', gap: 8 },
-  typeChip: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  typeChipText: { fontSize: 13, fontWeight: '600' },
-  statusChipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
-  statusPill: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  submitModalBtn: {
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 18,
-  },
-  submitModalBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  zoneError: { fontSize: 13, marginTop: 10, textAlign: 'center' },
 });

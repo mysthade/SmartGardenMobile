@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '@/src/lib/api';
 import { useAuth } from '@/src/features/auth/auth-context';
 import { useTheme } from '@/src/theme/theme-context';
+import { type ThemeTokens } from '@/src/theme/tokens';
 import {
   Trees,
   Map,
@@ -26,9 +27,13 @@ export default function DashboardScreen() {
   const summary = useDashboardSummary();
 
   const gardens = useQuery({
-    queryKey: ['gardens', 'dashboard'],
-    queryFn: () => api.listGardens({ limit: 10 }),
+    queryKey: ['gardens', 'list'],
+    queryFn: () => api.listGardens({ limit: 50 }),
     staleTime: 60_000,
+    select: (res) => ({
+      ...res,
+      data: res.data.slice(0, 5),
+    }),
   });
 
   const data = summary.data;
@@ -208,7 +213,7 @@ function MetricCard({
   value: number | undefined;
   loading: boolean;
   icon: React.ReactNode;
-  theme: any;
+  theme: ThemeTokens;
   onPress: () => void;
 }) {
   return (

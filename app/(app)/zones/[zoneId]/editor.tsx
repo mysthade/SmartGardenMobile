@@ -1,6 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Leaf, Plus } from 'lucide-react-native';
@@ -25,6 +33,9 @@ export default function ZoneEditorScreen() {
   const zoneId = params.zoneId ?? '';
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width, height } = useWindowDimensions();
+  const isLandscape = width > height;
+  const isWide = width >= 600 || isLandscape;
   const { theme } = useTheme();
 
   const [catalogOpen, setCatalogOpen] = useState(false);
@@ -64,6 +75,15 @@ export default function ZoneEditorScreen() {
     enabled: Boolean(zoneId),
     staleTime: 30_000,
   });
+
+  // При відкритті та поверненні фокуса оновлюємо схему, якщо немає незбережених змін
+  useFocusEffect(
+    useCallback(() => {
+      if (useZoneEditorStore.getState().saveStatus !== 'dirty') {
+        void layoutQuery.refetch();
+      }
+    }, [layoutQuery]),
+  );
 
   useEffect(() => {
     if (layoutQuery.data) {
@@ -151,36 +171,61 @@ export default function ZoneEditorScreen() {
         theme={theme}
       />
 
-      {lastError ? (
+      {lastError || saveStatus === 'error' ? (
         <View style={[styles.errorBar, { backgroundColor: theme.danger }]}>
           <Text style={styles.errorText} numberOfLines={2}>
-            {lastError}
+            {lastError || 'Помилка збереження'}
           </Text>
+          <Pressable onPress={saveNow} style={styles.retrySaveBtn} hitSlop={8}>
+            <Text style={styles.retrySaveText}>Повторити</Text>
+          </Pressable>
         </View>
       ) : null}
 
-      <View style={styles.canvasArea}>
-        <ZoneCanvas theme={theme} />
+      <View style={isWide ? styles.workspaceRow : styles.workspaceCol}>
+        {isWide && catalogOpen ? (
+          <PlantCatalogSheet
+            open={catalogOpen}
+            asSidePanel
+            onClose={() => setCatalogOpen(false)}
+            onCreateCustom={() => {
+              setCatalogOpen(false);
+              setCreateTypeOpen(true);
+            }}
+            centerMeters={{ x: zone.widthM / 2, y: zone.heightM / 2 }}
+            theme={theme}
+          />
+        ) : null}
+
+        <View style={styles.canvasArea}>
+          <ZoneCanvas theme={theme} />
+        </View>
       </View>
 
-      <Pressable
-        onPress={() => setCatalogOpen(true)}
-        style={[styles.fab, { backgroundColor: theme.ac, bottom: insets.bottom + 20 }]}
-      >
-        <Plus size={20} color="#fff" />
-        <Text style={styles.fabText}>Рослина</Text>
-      </Pressable>
+      {!catalogOpen ? (
+        <Pressable
+          accessibilityLabel="Відкрити каталог рослин"
+          onPress={() => setCatalogOpen(true)}
+          style={[styles.fab, { backgroundColor: theme.ac, bottom: insets.bottom + 20 }]}
+        >
+          <Plus size={20} color="#fff" />
+          <Text style={styles.fabText}>Рослина</Text>
+        </Pressable>
+      ) : null}
 
-      <PlantCatalogSheet
-        open={catalogOpen}
-        onClose={() => setCatalogOpen(false)}
-        onCreateCustom={() => {
-          setCatalogOpen(false);
-          setCreateTypeOpen(true);
-        }}
-        centerMeters={{ x: zone.widthM / 2, y: zone.heightM / 2 }}
-        theme={theme}
-      />
+      {!isWide ? (
+        <PlantCatalogSheet
+          open={catalogOpen}
+          asSidePanel={false}
+          onClose={() => setCatalogOpen(false)}
+          onCreateCustom={() => {
+            setCatalogOpen(false);
+            setCreateTypeOpen(true);
+          }}
+          centerMeters={{ x: zone.widthM / 2, y: zone.heightM / 2 }}
+          theme={theme}
+        />
+      ) : null}
 
       <PlantDetailSheet
         plant={detailOpen ? selected : null}
@@ -206,9 +251,25 @@ const styles = StyleSheet.create({
   centerText: { fontSize: 14, textAlign: 'center' },
   retryBtn: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 20, paddingVertical: 10, marginTop: 8 },
   retryText: { fontSize: 14, fontWeight: '700' },
+  workspaceCol: { flex: 1 },
+  workspaceRow: { flex: 1, flexDirection: 'row' },
   canvasArea: { flex: 1, padding: 10 },
-  errorBar: { paddingHorizontal: 14, paddingVertical: 8 },
-  errorText: { color: '#fff', fontSize: 12, fontWeight: '600' },
+  errorBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  errorText: { flex: 1, color: '#fff', fontSize: 12, fontWeight: '600' },
+  retrySaveBtn: {
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  retrySaveText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   fab: {
     position: 'absolute',
     right: 18,

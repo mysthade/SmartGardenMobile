@@ -27,6 +27,7 @@ export default function AppLayout() {
       <Stack.Screen name="analytics" options={{ headerShown: false }} />
       <Stack.Screen name="planner" options={{ headerShown: false }} />
       <Stack.Screen name="zones/[zoneId]/editor" options={{ headerShown: false }} />
+      <Stack.Screen name="plants/[plantId]" options={{ headerShown: false }} />
     </Stack>
   );
 }

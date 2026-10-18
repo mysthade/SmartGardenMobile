@@ -1,20 +1,22 @@
 import { useMemo } from 'react';
 import { Gesture, type ComposedGesture } from 'react-native-gesture-handler';
-import { runOnJS, useSharedValue } from 'react-native-reanimated';
+import { runOnJS, type SharedValue } from 'react-native-reanimated';
 
 type Options = {
   /** Поточний масштаб (для обмеження pinch). */
   getScale: () => number;
-  onZoom: (factor: number) => void;
-  onPan: (dxPx: number, dyPx: number) => void;
+  onZoomEnd: (factor: number) => void;
+  onPanEnd: (dxPx: number, dyPx: number) => void;
   /** Тап по порожньому місцю (знімає вибір). */
   onTapBackground: () => void;
-  /** Чи зараз перетягується маркер (щоб не панити полотно). */
-  isDragging: () => boolean;
+  /** SharedValue прапорця перетягування маркера (щоб не панити полотно на UI-ниті). */
+  isDragging?: SharedValue<boolean>;
+  /** SharedValues для переміщення полотна на UI-потоці без ререндерів React. */
+  panTranslateX: SharedValue<number>;
+  panTranslateY: SharedValue<number>;
+  pinchScale: SharedValue<number>;
 };
 
-const MIN_SCALE = 0.3;
-const MAX_SCALE = 4;
 /** Поріг руху для початку пану (px). */
 const PAN_MIN_DISTANCE = 3;
 /** Мінімальна відносна зміна масштабу, щоб вважати pinch активним. */
@@ -23,69 +25,77 @@ const ZOOM_EPSILON = 0.001;
 /**
  * Жести самого полотна (не маркерів): пан одним пальцем по порожній області,
  * pinch-zoom двома пальцями (обмежений 0.3–4), тап — знімає вибір.
- * Маркери мають власні дочірні GestureDetector, тож отримують пріоритет.
- *
- * Синхронні колбеки JS (стейт стору) викликаються через runOnJS, бо самі
- * колбеки жестів виконуються в worklet-потоці UI-нитки.
+ * Рух та масштабування виконуються на UI-потоці через SharedValues,
+ * а фіксація у стейт стору — лише на завершенні жесту.
  */
 export function useCanvasGestures({
   getScale,
-  onZoom,
-  onPan,
+  onZoomEnd,
+  onPanEnd,
   onTapBackground,
   isDragging,
+  panTranslateX,
+  panTranslateY,
+  pinchScale,
 }: Options): ComposedGesture {
-  // Попередні значення translation, щоб рахувати інкремент кожного кадру.
-  const prevTX = useSharedValue(0);
-  const prevTY = useSharedValue(0);
-  // Попередній cumulative scale жесту pinch (для відносного фактору).
-  const prevScale = useSharedValue(1);
-
   return useMemo(() => {
-    /** Застосовує фактор масштабу з клампом 0.3–4 (на JS-стороні). */
-    const applyZoom = (rawFactor: number) => {
-      const current = getScale();
-      const target = Math.min(MAX_SCALE, Math.max(MIN_SCALE, current * rawFactor));
-      const factor = target / current;
-      if (Math.abs(factor - 1) > ZOOM_EPSILON) {
-        onZoom(factor);
-      }
-    };
-
     const pan = Gesture.Pan()
       .minDistance(PAN_MIN_DISTANCE)
       .maxPointers(1)
       .onStart(() => {
         'worklet';
-        prevTX.value = 0;
-        prevTY.value = 0;
+        panTranslateX.value = 0;
+        panTranslateY.value = 0;
       })
       .onUpdate((e) => {
         'worklet';
-        if (isDragging()) {
+        if (isDragging && isDragging.value) {
           return;
         }
-        const dx = e.translationX - prevTX.value;
-        const dy = e.translationY - prevTY.value;
-        prevTX.value = e.translationX;
-        prevTY.value = e.translationY;
-        if (dx !== 0 || dy !== 0) {
-          runOnJS(onPan)(dx, dy);
+        panTranslateX.value = e.translationX;
+        panTranslateY.value = e.translationY;
+      })
+      .onEnd((e) => {
+        'worklet';
+        if (isDragging && isDragging.value) {
+          return;
         }
+        const dx = e.translationX;
+        const dy = e.translationY;
+        panTranslateX.value = 0;
+        panTranslateY.value = 0;
+        if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+          runOnJS(onPanEnd)(dx, dy);
+        }
+      })
+      .onFinalize(() => {
+        'worklet';
+        panTranslateX.value = 0;
+        panTranslateY.value = 0;
       });
 
     const pinch = Gesture.Pinch()
       .onStart(() => {
         'worklet';
-        prevScale.value = 1;
+        pinchScale.value = 1;
       })
       .onUpdate((e) => {
         'worklet';
-        const raw = e.scale / prevScale.value;
-        prevScale.value = e.scale;
-        if (Math.abs(raw - 1) > ZOOM_EPSILON) {
-          runOnJS(applyZoom)(raw);
+        if (e.scale > 0 && Number.isFinite(e.scale)) {
+          pinchScale.value = e.scale;
         }
+      })
+      .onEnd((e) => {
+        'worklet';
+        const rawScale = e.scale;
+        pinchScale.value = 1;
+        if (Number.isFinite(rawScale) && rawScale > 0 && Math.abs(rawScale - 1) > ZOOM_EPSILON) {
+          runOnJS(onZoomEnd)(rawScale);
+        }
+      })
+      .onFinalize(() => {
+        'worklet';
+        pinchScale.value = 1;
       });
 
     const tapBackground = Gesture.Tap()
@@ -99,5 +109,15 @@ export function useCanvasGestures({
 
     // Пан/пінч працюють одночасно (різна кількість пальців); тап — запасний варіант.
     return Gesture.Race(Gesture.Simultaneous(pan, pinch), tapBackground);
-  }, [getScale, onZoom, onPan, onTapBackground, isDragging, prevTX, prevTY, prevScale]);
+  }, [
+    getScale,
+    onZoomEnd,
+    onPanEnd,
+    onTapBackground,
+    isDragging,
+    panTranslateX,
+    panTranslateY,
+    pinchScale,
+  ]);
 }
+

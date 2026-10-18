@@ -9,6 +9,7 @@ export function useZoneAutosave(zoneId: string) {
   const queryClient = useQueryClient();
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inflight = useRef(false);
+  const lastSavedPayload = useRef<string>('');
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -36,34 +37,49 @@ export function useZoneAutosave(zoneId: string) {
         };
       });
 
-      return api.saveBedLayout(
-        zoneId,
-        {
-          zoneUpdatedAt: state.zone.updatedAt,
-          bed: {
-            name: state.zone.name,
-            width: String(state.zone.widthM),
-            height: String(state.zone.heightM),
-          },
-          settings: state.settings,
-          plants,
+      const payload = {
+        zoneUpdatedAt: state.zone.updatedAt,
+        bed: {
+          name: state.zone.name,
+          width: String(state.zone.widthM),
+          height: String(state.zone.heightM),
         },
+        settings: state.settings,
+        plants,
+      };
+
+      const payloadStr = JSON.stringify(payload);
+      if (payloadStr === lastSavedPayload.current) {
+        return null;
+      }
+
+      const res = await api.saveBedLayout(
+        zoneId,
+        payload,
         newIdempotencyKey('zone-layout'),
       );
+      lastSavedPayload.current = payloadStr;
+      return res;
     },
     onMutate: () => {
       inflight.current = true;
       useZoneEditorStore.getState().setSaveStatus('saving');
     },
     onSuccess: async (result) => {
+      if (!result) {
+        useZoneEditorStore.getState().setSaveStatus('saved');
+        return;
+      }
       queryClient.setQueryData(['bed-layout', zoneId], result.layout);
-      queryClient.setQueryData(['bed-layout', 'minimap', zoneId], result.layout);
       useZoneEditorStore.getState().applyIdMap(result.idMap, result.layout);
       useZoneEditorStore.getState().setSaveStatus('saved');
-      await queryClient.invalidateQueries({ queryKey: ['bed-layout', 'minimap', zoneId] });
-      await queryClient.invalidateQueries({ queryKey: ['plants', 'zone', zoneId] });
-      await queryClient.invalidateQueries({ queryKey: ['plants'] });
-      await queryClient.invalidateQueries({ queryKey: ['zones'] });
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['bed-layout', zoneId] }),
+        queryClient.invalidateQueries({ queryKey: ['plants', 'zone', zoneId] }),
+        queryClient.invalidateQueries({ queryKey: ['plants'] }),
+        queryClient.invalidateQueries({ queryKey: ['zones'] }),
+        queryClient.invalidateQueries({ queryKey: ['gardens'] }),
+      ]);
     },
     onError: (err) => {
       const conflict =

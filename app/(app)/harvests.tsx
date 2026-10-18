@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import {
   ActivityIndicator,
   FlatList,
@@ -107,7 +107,14 @@ export default function HarvestsScreen() {
           )
         }
         renderItem={({ item }) => (
-          <View style={[styles.card, { backgroundColor: theme.pn, borderColor: theme.bd }]}>
+          <Pressable
+            onPress={() => {
+              if (item.plantId) {
+                router.push(`/plants/${item.plantId}` as Href);
+              }
+            }}
+            style={[styles.card, { backgroundColor: theme.pn, borderColor: theme.bd }]}
+          >
             <View style={styles.cardHeader}>
               <Text style={[styles.cropName, { color: theme.tx }]}>Збір урожаю</Text>
               <View style={styles.weightTag}>
@@ -130,7 +137,7 @@ export default function HarvestsScreen() {
                 </Text>
               ) : null}
             </View>
-          </View>
+          </Pressable>
         )}
       />
     </View>

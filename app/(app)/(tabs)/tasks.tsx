@@ -12,6 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '@/src/lib/api';
 import { useTheme } from '@/src/theme/theme-context';
+import { type ThemeTokens } from '@/src/theme/tokens';
 import {
   ClipboardList,
   CheckCircle2,
@@ -40,7 +41,28 @@ export default function TasksScreen() {
   const completeMutation = useMutation({
     mutationFn: (taskId: string) =>
       api.updateTask(taskId, { completedAt: new Date().toISOString() }),
-    onSuccess: () => {
+    onMutate: async (taskId: string) => {
+      await queryClient.cancelQueries({ queryKey: ['tasks', 'list'] });
+      const previousTasks = queryClient.getQueryData(['tasks', 'list']);
+      queryClient.setQueryData(['tasks', 'list'], (old: typeof tasksQuery.data) => {
+        if (!old || !old.data) return old;
+        return {
+          ...old,
+          data: old.data.map((task) =>
+            task.id === taskId
+              ? { ...task, completedAt: new Date().toISOString() }
+              : task
+          ),
+        };
+      });
+      return { previousTasks };
+    },
+    onError: (_err, _taskId, context) => {
+      if (context?.previousTasks) {
+        queryClient.setQueryData(['tasks', 'list'], context.previousTasks);
+      }
+    },
+    onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ['tasks'] });
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
@@ -212,7 +234,7 @@ function FilterChip({
   count: number;
   active: boolean;
   onPress: () => void;
-  theme: any;
+  theme: ThemeTokens;
 }) {
   return (
     <Pressable
