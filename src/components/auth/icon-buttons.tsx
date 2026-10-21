@@ -1,16 +1,21 @@
-import type { ReactNode } from 'react';
+import React, { type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text } from 'react-native';
+import { Settings } from 'lucide-react-native';
 import { useTheme } from '@/src/theme/theme-context';
 
-/** Кругла кнопка 44pt: фон --pn, рамка --bd, легка тінь. */
+export const ICON_BUTTON_SIZE = 40;
+
+/** Кругла кнопка 40×40 dp: фон --pn, рамка --bd, легка тінь. Зона тапу ≥ 44 dp через hitSlop=8. */
 export function IconCircleButton({
   children,
   onPress,
   accessibilityLabel,
+  testID,
 }: {
   children: ReactNode;
   onPress: () => void;
   accessibilityLabel: string;
+  testID?: string;
 }) {
   const { theme } = useTheme();
   const dark = theme.name === 'dark';
@@ -19,7 +24,8 @@ export function IconCircleButton({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
-      hitSlop={8}
+      testID={testID}
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       style={[
         styles.circle,
         {
@@ -38,8 +44,28 @@ export function IconCircleButton({
 export function BackButton({ onPress }: { onPress: () => void }) {
   const { theme } = useTheme();
   return (
-    <IconCircleButton onPress={onPress} accessibilityLabel="Назад">
+    <IconCircleButton onPress={onPress} accessibilityLabel="Назад" testID="topbar-back">
       <Text style={[styles.arrow, { color: theme.tx }]}>←</Text>
+    </IconCircleButton>
+  );
+}
+
+/** Кнопка "Налаштування" (шестерня) — 40×40 dp. */
+export function SettingsButton({
+  onPress,
+  accessibilityLabel = 'Налаштування',
+}: {
+  onPress?: () => void;
+  accessibilityLabel?: string;
+}) {
+  const { theme } = useTheme();
+  return (
+    <IconCircleButton
+      onPress={onPress ?? (() => {})}
+      accessibilityLabel={accessibilityLabel}
+      testID="topbar-settings"
+    >
+      <Settings size={18} color={theme.tx} />
     </IconCircleButton>
   );
 }
@@ -52,6 +78,7 @@ export function ThemeToggleButton() {
     <IconCircleButton
       onPress={toggleTheme}
       accessibilityLabel={dark ? 'Увімкнути світлу тему' : 'Увімкнути темну тему'}
+      testID="topbar-theme"
     >
       <Text style={styles.icon}>{dark ? '☀️' : '🌙'}</Text>
     </IconCircleButton>
@@ -60,9 +87,9 @@ export function ThemeToggleButton() {
 
 const styles = StyleSheet.create({
   circle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: ICON_BUTTON_SIZE,
+    height: ICON_BUTTON_SIZE,
+    borderRadius: ICON_BUTTON_SIZE / 2,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -81,6 +108,7 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 2,
   },
-  arrow: { fontSize: 22, fontWeight: '700', lineHeight: 24 },
-  icon: { fontSize: 20 },
+  arrow: { fontSize: 20, fontWeight: '700', lineHeight: 22 },
+  icon: { fontSize: 18 },
 });
+

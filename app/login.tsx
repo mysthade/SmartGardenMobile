@@ -1,16 +1,14 @@
 import { loginSchema } from '@smart-garden/validation';
 import { router } from 'expo-router';
-import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { StyleSheet, Text, type TextInput, View } from 'react-native';
 import {
   AuthField,
   AuthFormError,
-  AuthFormTopBar,
-  AuthScreenShell,
+  AuthScreenLayout,
   AuthSheetHeader,
   AuthSwitchRow,
   PasswordVisibilityToggle,
-  SproutBadge,
 } from '@/src/components/auth';
 import { SubmitButton } from '@/src/components/auth/submit-button';
 import { useAuth } from '@/src/features/auth/auth-context';
@@ -21,6 +19,8 @@ type FieldErrors = Partial<Record<'email' | 'password', string>>;
 export default function LoginScreen() {
   const { login } = useAuth();
   const { theme } = useTheme();
+  const passwordRef = useRef<TextInput>(null);
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -59,15 +59,7 @@ export default function LoginScreen() {
   };
 
   return (
-    <AuthScreenShell
-      topBar={<AuthFormTopBar onBack={() => router.replace('/welcome')} />}
-      hero={
-        <View style={styles.hero}>
-          <SproutBadge theme={theme} />
-          <Text style={[styles.logo, { color: theme.ac2 }]}>Smart Garden</Text>
-        </View>
-      }
-    >
+    <AuthScreenLayout onBack={() => router.replace('/welcome')} testID="login-screen">
       <AuthSheetHeader title="Вітаємо знову 👋" subtitle="Увійдіть тим самим акаунтом, що й на сайті" />
 
       <AuthField
@@ -84,10 +76,13 @@ export default function LoginScreen() {
         autoCapitalize="none"
         autoComplete="email"
         textContentType="emailAddress"
+        returnKeyType="next"
+        onSubmitEditing={() => passwordRef.current?.focus()}
         testID="login-email"
       />
 
       <AuthField
+        ref={passwordRef}
         label="Пароль"
         value={password}
         onChangeText={setPassword}
@@ -100,6 +95,8 @@ export default function LoginScreen() {
         secureTextEntry={!showPassword}
         autoComplete="password"
         textContentType="password"
+        returnKeyType="done"
+        onSubmitEditing={() => void onSubmit()}
         testID="login-password"
         trailing={
           <PasswordVisibilityToggle
@@ -113,7 +110,9 @@ export default function LoginScreen() {
 
       {/* TODO(forgot-password): екрана відновлення пароля в mobile ще немає — потрібен окремий флоу. */}
       <View style={styles.forgotWrap}>
-        <Text style={[styles.forgot, { color: theme.ac2 }]}>Забули пароль?</Text>
+        <Text style={[styles.forgot, { color: theme.ac2 }]} maxFontSizeMultiplier={1.3}>
+          Забули пароль?
+        </Text>
       </View>
 
       <SubmitButton
@@ -128,13 +127,12 @@ export default function LoginScreen() {
         action="Зареєструватися"
         onPress={() => router.push('/register')}
       />
-    </AuthScreenShell>
+    </AuthScreenLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  hero: { alignItems: 'center' },
-  logo: { fontSize: 24, fontWeight: '800', marginTop: 10 },
   forgotWrap: { alignItems: 'flex-end', marginTop: 10 },
   forgot: { fontSize: 13, fontWeight: '700' },
 });
+

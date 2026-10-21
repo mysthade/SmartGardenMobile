@@ -445,16 +445,30 @@ export default function GardensScreen() {
           <Text style={[styles.zonesTitle, { color: theme.tx }]}>Зони саду ({zones.length})</Text>
         </View>
         {activeGardenId ? (
-          <Pressable
-            style={[styles.addZoneBtn, { backgroundColor: theme.pn, borderColor: theme.bd }]}
-            onPress={() => {
-              setZoneError(null);
-              setAddZoneOpen(true);
-            }}
-          >
-            <Plus size={14} color={theme.ac} />
-            <Text style={[styles.addZoneBtnText, { color: theme.ac }]}>Зона</Text>
-          </Pressable>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Відкрити планувальник території"
+              style={[styles.addZoneBtn, { backgroundColor: theme.pn, borderColor: theme.bd }]}
+              onPress={() => router.push(`/gardens/${activeGardenId}/planner` as never)}
+            >
+              <Map size={14} color={theme.ac} />
+              <Text style={[styles.addZoneBtnText, { color: theme.ac }]}>Планувальник</Text>
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Додати нову зону"
+              style={[styles.addZoneBtn, { backgroundColor: theme.pn, borderColor: theme.bd }]}
+              onPress={() => {
+                setZoneError(null);
+                setAddZoneOpen(true);
+              }}
+            >
+              <Plus size={14} color={theme.ac} />
+              <Text style={[styles.addZoneBtnText, { color: theme.ac }]}>Зона</Text>
+            </Pressable>
+          </View>
         ) : null}
       </View>
 

@@ -1,8 +1,9 @@
-import type { ReactNode } from 'react';
+import React, { forwardRef, type ReactNode } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  type ReturnKeyTypeOptions,
   ScrollView,
   StyleSheet,
   Text,
@@ -18,62 +19,99 @@ export interface AuthFieldProps {
   value: string;
   onChangeText: (text: string) => void;
   placeholder?: string;
-  leadingIcon: string;
+  leadingIcon: ReactNode;
   error?: string;
+  success?: boolean;
+  successMessage?: string;
   focused: boolean;
   onFocus: () => void;
   onBlur: () => void;
   keyboardType?: 'default' | 'email-address';
-  autoCapitalize?: 'none' | 'sentences';
+  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
   autoComplete?: 'email' | 'password' | 'new-password' | 'name';
   secureTextEntry?: boolean;
   textContentType?: 'emailAddress' | 'password' | 'newPassword' | 'name';
+  returnKeyType?: ReturnKeyTypeOptions;
+  onSubmitEditing?: () => void;
   trailing?: ReactNode;
   testID?: string;
 }
 
 /**
  * Поле форми auth-екранів: лейбл (--mu) + "коробка" з іконкою зліва,
- * рамка --bd 1.5, фон --bg, підсвітка --ac у фокусі, червона рамка при помилці.
+ * рамка --bd 1.5, фон --bg, підсвітка --ac у фокусі або при успіху, червона рамка при помилці.
  */
-export function AuthField(props: AuthFieldProps) {
+export const AuthField = forwardRef<TextInput, AuthFieldProps>(function AuthField(props, ref) {
   const { theme } = useTheme();
   const {
     label,
     leadingIcon,
     error,
+    success,
+    successMessage,
     focused,
     trailing,
     testID,
     ...inputProps
   } = props;
-  const borderColor = error ? theme.danger : focused ? theme.ac : theme.bd;
+  const borderColor = error
+    ? theme.danger
+    : success
+      ? theme.ac
+      : focused
+        ? theme.ac
+        : theme.bd;
   return (
     <View style={styles.fieldWrap}>
-      <Text style={[styles.label, { color: theme.mu }]}>{label}</Text>
+      <Text style={[styles.label, { color: theme.mu }]} maxFontSizeMultiplier={1.3}>
+        {label}
+      </Text>
       <View
         style={[
           styles.box,
           {
             backgroundColor: theme.bg,
             borderColor,
-            ...(focused && !error ? { borderWidth: 2 } : {}),
+            ...((focused || success) && !error ? { borderWidth: 2 } : {}),
           },
         ]}
       >
-        <Text style={styles.leadingIcon}>{leadingIcon}</Text>
+        {typeof leadingIcon === 'string' ? (
+          <Text style={styles.leadingIcon}>{leadingIcon}</Text>
+        ) : (
+          <View style={styles.leadingIconWrap}>{leadingIcon}</View>
+        )}
         <TextInput
+          ref={ref}
           style={[styles.input, { color: theme.tx }]}
           placeholderTextColor={theme.mu}
+          accessibilityLabel={label}
+          maxFontSizeMultiplier={1.3}
           testID={testID}
           {...inputProps}
         />
         {trailing}
       </View>
-      {error ? <Text style={[styles.error, { color: theme.danger }]}>{error}</Text> : null}
+      {error ? (
+        <Text
+          style={[styles.error, { color: theme.danger }]}
+          maxFontSizeMultiplier={1.3}
+          testID={testID ? `${testID}-error` : undefined}
+        >
+          {error}
+        </Text>
+      ) : successMessage ? (
+        <Text
+          style={[styles.success, { color: theme.ac }]}
+          maxFontSizeMultiplier={1.3}
+          testID={testID ? `${testID}-success` : undefined}
+        >
+          {successMessage}
+        </Text>
+      ) : null}
     </View>
   );
-}
+});
 
 /** Тонка кнопка-око для пароля 👁️/🙈. */
 export function PasswordVisibilityToggle({
@@ -101,8 +139,12 @@ export function AuthSheetHeader({ title, subtitle }: { title: string; subtitle: 
   const { theme } = useTheme();
   return (
     <View>
-      <Text style={[styles.title, { color: theme.tx }]}>{title}</Text>
-      <Text style={[styles.subtitle, { color: theme.mu }]}>{subtitle}</Text>
+      <Text style={[styles.title, { color: theme.tx }]} maxFontSizeMultiplier={1.3}>
+        {title}
+      </Text>
+      <Text style={[styles.subtitle, { color: theme.mu }]} maxFontSizeMultiplier={1.3}>
+        {subtitle}
+      </Text>
     </View>
   );
 }
@@ -110,7 +152,11 @@ export function AuthSheetHeader({ title, subtitle }: { title: string; subtitle: 
 /** Текст помилки форми (серверної) кольором danger. */
 export function AuthFormError({ message }: { message: string }) {
   const { theme } = useTheme();
-  return <Text style={[styles.formError, { color: theme.danger }]}>{message}</Text>;
+  return (
+    <Text style={[styles.formError, { color: theme.danger }]} maxFontSizeMultiplier={1.3}>
+      {message}
+    </Text>
+  );
 }
 
 export interface AuthScreenShellProps {
@@ -163,10 +209,12 @@ const styles = StyleSheet.create({
     minHeight: 52,
   },
   leadingIcon: { fontSize: 18, marginRight: 10 },
+  leadingIconWrap: { marginRight: 10, justifyContent: 'center', alignItems: 'center' },
   input: { flex: 1, fontSize: 16, paddingVertical: 12 },
   eye: { padding: 6, marginLeft: 6 },
   eyeText: { fontSize: 18 },
   error: { fontSize: 13, marginTop: 6 },
+  success: { fontSize: 13, marginTop: 6, fontWeight: '600' },
   title: { fontSize: 24, fontWeight: '800' },
   subtitle: { fontSize: 14, lineHeight: 20, marginTop: 6 },
   formError: { fontSize: 13, marginTop: 10 },

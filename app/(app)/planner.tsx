@@ -1,165 +1,240 @@
+import { useEffect } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme } from '@/src/theme/theme-context';
-import { ArrowLeft, Compass, Sparkles } from 'lucide-react-native';
+import { useQuery } from '@tanstack/react-query';
+import { ArrowLeft, ChevronRight, Compass, MapPin } from 'lucide-react-native';
 
-export default function PlannerScreen() {
+import { api } from '@/src/lib/api';
+import { useTheme } from '@/src/theme/theme-context';
+
+export default function PlannerGatewayScreen() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
 
+  const gardensQuery = useQuery({
+    queryKey: ['gardens', 'list'],
+    queryFn: () => api.listGardens({ limit: 50 }),
+    staleTime: 30_000,
+  });
+
+  const gardens = gardensQuery.data?.data ?? [];
+
+  // If there's only 1 garden, automatically forward to its planner
+  useEffect(() => {
+    if (!gardensQuery.isLoading && gardens.length === 1 && gardens[0]) {
+      router.replace(`/gardens/${gardens[0].id}/planner` as never);
+    }
+  }, [gardensQuery.isLoading, gardens]);
+
   return (
-    <ScrollView
-      style={[styles.screen, { backgroundColor: theme.bg }]}
-      contentContainerStyle={[styles.content, { paddingTop: insets.top + 12 }]}
-      showsVerticalScrollIndicator={false}
-    >
+    <View style={[styles.screen, { backgroundColor: theme.bg }]}>
+      {/* Safe Area Top */}
+      <View style={{ height: insets.top, backgroundColor: theme.pn }} />
+
       {/* Top Bar */}
-      <View style={styles.topBar}>
+      <View style={[styles.topBar, { backgroundColor: theme.pn, borderBottomColor: theme.bd }]}>
         <Pressable
-          style={[styles.backBtn, { backgroundColor: theme.pn, borderColor: theme.bd }]}
+          accessibilityLabel="Назад"
+          accessibilityRole="button"
+          style={[styles.backBtn, { backgroundColor: theme.bg, borderColor: theme.bd }]}
           onPress={() => router.back()}
         >
-          <ArrowLeft size={18} color={theme.tx} />
+          <ArrowLeft size={20} color={theme.tx} />
         </Pressable>
-        <Text style={[styles.screenTitle, { color: theme.tx }]}>Планувальник саду</Text>
+        <Text style={[styles.screenTitle, { color: theme.tx }]}>Планувальник території</Text>
         <View style={{ width: 40 }} />
       </View>
 
-      {/* Info Banner */}
-      <View
-        style={[
-          styles.banner,
-          {
-            backgroundColor: theme.name === 'dark' ? '#17251c' : '#eaf6ee',
-            borderColor: theme.bd,
-          },
-        ]}
-      >
-        <Compass size={24} color={theme.ac} />
-        <View style={styles.bannerTextWrap}>
-          <Text style={[styles.bannerTitle, { color: theme.tx }]}>2D/3D Схема території</Text>
-          <Text style={[styles.bannerDesc, { color: theme.mu }]}>
-            Схематичний вигляд ваших грядок та зон з веб-планувальника
+      {/* Content */}
+      {gardensQuery.isLoading ? (
+        <View style={styles.centerContainer}>
+          <ActivityIndicator size="large" color={theme.ac} />
+          <Text style={[styles.loadingText, { color: theme.tx }]}>Завантаження садів...</Text>
+        </View>
+      ) : gardens.length === 0 ? (
+        <View style={[styles.centerContainer, { padding: 24 }]}>
+          <Compass size={60} color={theme.ac} />
+          <Text style={[styles.emptyTitle, { color: theme.tx }]}>Садів ще не створено</Text>
+          <Text style={[styles.emptySubtitle, { color: theme.mu }]}>
+            Щоб використовувати 2D-планувальник території, спочатку створіть сад у розділі «Сади».
           </Text>
+          <Pressable
+            style={[styles.btnAction, { backgroundColor: theme.ac }]}
+            onPress={() => router.push('/(tabs)/gardens' as never)}
+          >
+            <Text style={styles.btnActionText}>Перейти до створення саду</Text>
+          </Pressable>
         </View>
-      </View>
-
-      {/* Grid Canvas Preview */}
-      <View style={[styles.canvasCard, { backgroundColor: theme.pn, borderColor: theme.bd }]}>
-        <View style={styles.canvasHeader}>
-          <Text style={[styles.canvasTitle, { color: theme.tx }]}>Активна ділянка</Text>
-          <View style={[styles.canvasBadge, { backgroundColor: '#eaf6ee' }]}>
-            <Text style={{ color: theme.ac, fontSize: 12, fontWeight: '700' }}>Масштаб 1:50</Text>
-          </View>
-        </View>
-
-        {/* Visual Map Mockup */}
-        <View
-          style={[
-            styles.schematicCanvas,
-            { backgroundColor: theme.name === 'dark' ? '#152019' : '#f0f5f1' },
-          ]}
+      ) : (
+        <ScrollView
+          style={styles.scrollArea}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
         >
-          {/* Zone 1: Теплиця */}
-          <View style={[styles.zoneBlock, styles.greenhouse]}>
-            <Text style={styles.zoneBlockText}>🏠 Теплиця (3x6м)</Text>
+          <View style={styles.headerNotice}>
+            <Text style={[styles.noticeTitle, { color: theme.tx }]}>Виберіть сад для планування</Text>
+            <Text style={[styles.noticeSubtitle, { color: theme.mu }]}>
+              Планувальник дозволяє малювати схеми території, грядки, будівлі та комунікації окремо для кожного саду.
+            </Text>
           </View>
 
-          {/* Zone 2: Грядки */}
-          <View style={styles.bedsRow}>
-            <View style={[styles.zoneBlock, styles.bed]}>
-              <Text style={styles.zoneBlockText}>🌱 Томати</Text>
-            </View>
-            <View style={[styles.zoneBlock, styles.bed]}>
-              <Text style={styles.zoneBlockText}>🥒 Огірки</Text>
-            </View>
-            <View style={[styles.zoneBlock, styles.bed]}>
-              <Text style={styles.zoneBlockText}>🥕 Морква</Text>
-            </View>
-          </View>
+          <View style={styles.gardensList}>
+            {gardens.map((g) => (
+              <Pressable
+                key={g.id}
+                accessibilityRole="button"
+                accessibilityLabel={`Відкрити планувальник для саду ${g.name}`}
+                style={({ pressed }) => [
+                  styles.gardenCard,
+                  {
+                    backgroundColor: theme.pn,
+                    borderColor: theme.bd,
+                    opacity: pressed ? 0.8 : 1,
+                  },
+                ]}
+                onPress={() => router.push(`/gardens/${g.id}/planner` as never)}
+              >
+                <View style={[styles.gardenIconWrap, { backgroundColor: theme.ac + '20' }]}>
+                  <Compass size={24} color={theme.ac} />
+                </View>
 
-          {/* Zone 3: Сад */}
-          <View style={[styles.zoneBlock, styles.orchard]}>
-            <Text style={styles.zoneBlockText}>🌳 Яблуневий сад</Text>
-          </View>
-        </View>
-      </View>
+                <View style={styles.gardenInfo}>
+                  <Text style={[styles.gardenName, { color: theme.tx }]}>{g.name}</Text>
+                  {g.locationName ? (
+                    <View style={styles.locationRow}>
+                      <MapPin size={13} color={theme.mu} />
+                      <Text style={[styles.gardenLocation, { color: theme.mu }]}>
+                        {g.locationName}
+                      </Text>
+                    </View>
+                  ) : (
+                    <Text style={[styles.gardenLocation, { color: theme.mu }]}>
+                      Ділянка саду
+                    </Text>
+                  )}
+                </View>
 
-      {/* Sync tip */}
-      <View style={[styles.tipCard, { backgroundColor: theme.pn, borderColor: theme.bd }]}>
-        <Sparkles size={20} color={theme.ac} />
-        <Text style={[styles.tipText, { color: theme.mu }]}>
-          Повне 3D редагування з перетягуванням об'єктів оптимізовано для веб-версії Smart Garden на ПК, а тут ви можете переглядати поточну схему та прив'язані рослини.
-        </Text>
-      </View>
-    </ScrollView>
+                <ChevronRight size={20} color={theme.mu} />
+              </Pressable>
+            ))}
+          </View>
+        </ScrollView>
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  content: { paddingHorizontal: 18, paddingBottom: 40 },
+  screen: {
+    flex: 1,
+  },
   topBar: {
+    height: 56,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 16,
+    paddingHorizontal: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   backBtn: {
     width: 40,
     height: 40,
-    borderRadius: 12,
+    borderRadius: 10,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  screenTitle: { fontSize: 18, fontWeight: '700' },
-  banner: {
-    flexDirection: 'row',
-    padding: 16,
-    borderRadius: 18,
-    borderWidth: 1,
+  screenTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  centerContainer: {
+    flex: 1,
     alignItems: 'center',
-    gap: 12,
-    marginBottom: 16,
+    justifyContent: 'center',
   },
-  bannerTextWrap: { flex: 1 },
-  bannerTitle: { fontSize: 15, fontWeight: '700' },
-  bannerDesc: { fontSize: 12, marginTop: 2 },
-  canvasCard: { padding: 16, borderRadius: 20, borderWidth: 1, marginBottom: 16 },
-  canvasHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 14,
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    fontWeight: '500',
   },
-  canvasTitle: { fontSize: 16, fontWeight: '700' },
-  canvasBadge: { paddingVertical: 4, paddingHorizontal: 8, borderRadius: 8 },
-  schematicCanvas: {
-    height: 280,
-    borderRadius: 14,
-    padding: 12,
-    justifyContent: 'space-between',
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginTop: 16,
+    textAlign: 'center',
   },
-  zoneBlock: {
-    padding: 12,
+  emptySubtitle: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 8,
+    marginBottom: 20,
+    lineHeight: 20,
+    maxWidth: 320,
+  },
+  btnAction: {
+    height: 46,
+    paddingHorizontal: 20,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  greenhouse: { backgroundColor: '#76d7c4' },
-  bedsRow: { flexDirection: 'row', gap: 8 },
-  bed: { flex: 1, backgroundColor: '#82e0aa', paddingVertical: 20 },
-  orchard: { backgroundColor: '#58d68d' },
-  zoneBlockText: { fontSize: 12, fontWeight: '700', color: '#145a32' },
-  tipCard: {
-    flexDirection: 'row',
-    padding: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    gap: 12,
-    alignItems: 'center',
+  btnActionText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
   },
-  tipText: { fontSize: 13, lineHeight: 18, flex: 1 },
+  scrollArea: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: 16,
+  },
+  headerNotice: {
+    marginBottom: 16,
+  },
+  noticeTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  noticeSubtitle: {
+    fontSize: 13,
+    marginTop: 4,
+    lineHeight: 18,
+  },
+  gardensList: {
+    gap: 12,
+  },
+  gardenCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  gardenIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  gardenInfo: {
+    flex: 1,
+  },
+  gardenName: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  gardenLocation: {
+    fontSize: 13,
+  },
 });

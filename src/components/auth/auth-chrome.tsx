@@ -1,13 +1,13 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
 import type { ReactNode } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/src/theme/theme-context';
 import type { ThemeTokens } from '@/src/theme/tokens';
 import { primaryShadow, sheetShadow } from './shadows';
 
-export const MIN_TAP_HEIGHT = 44;
+export const MIN_TAP_HEIGHT = 48;
 
 /**
  * Спільний каркас auth-екранів: фоновий градієнт ac3→bg + декоративні плями.
@@ -55,10 +55,14 @@ export function AuthTopBar({ children }: { children: ReactNode }) {
 /**
  * Нижня картка (sheet): заокруглені лише верхні кути 28px, фон --pn,
  * тінь угору (слабша в темній темі). Обгортає ScrollView-контент.
+ * На планшетах (≥ 600 dp) центрується з maxWidth ~480 dp.
  */
 export function AuthSheet({ children }: { children: ReactNode }) {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 600;
+
   return (
     <View
       style={[
@@ -67,6 +71,7 @@ export function AuthSheet({ children }: { children: ReactNode }) {
           backgroundColor: theme.pn,
           borderColor: theme.bd,
           paddingBottom: Math.max(insets.bottom, 24) + 16,
+          ...(isTablet ? styles.sheetTablet : {}),
           ...sheetShadow(theme),
         },
       ]}
@@ -143,6 +148,11 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 24,
     paddingTop: 24,
+  },
+  sheetTablet: {
+    width: '100%',
+    maxWidth: 480,
+    alignSelf: 'center',
   },
   primary: {
     minHeight: MIN_TAP_HEIGHT,

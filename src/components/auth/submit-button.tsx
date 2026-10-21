@@ -15,11 +15,17 @@ interface SubmitButtonProps {
  */
 export function SubmitButton({ title, onPress, loading, testID }: SubmitButtonProps) {
   return (
-    <PrimaryButton onPress={onPress}>
+    <PrimaryButton
+      onPress={() => {
+        if (!loading) {
+          onPress();
+        }
+      }}
+    >
       {loading ? (
         <ActivityIndicator color="#fff" testID={testID ? `${testID}-loading` : undefined} />
       ) : (
-        <Text style={submitStyles.text} testID={testID}>
+        <Text style={submitStyles.text} testID={testID} maxFontSizeMultiplier={1.3}>
           {title}
         </Text>
       )}

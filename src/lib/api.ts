@@ -22,7 +22,7 @@ function resolveApiBaseUrl(): string {
 
   if (Platform.OS === 'android') {
     const host = Constants.expoConfig?.hostUri?.split(':')[0];
-    if (host && host !== 'localhost' && host !== '127.0.0.1') {
+    if (host && host !== 'localhost' && host !== '127.0.0.1' && !host.startsWith('169.254.')) {
       return `http://${host}:3001`;
     }
     return 'http://10.0.2.2:3001';
