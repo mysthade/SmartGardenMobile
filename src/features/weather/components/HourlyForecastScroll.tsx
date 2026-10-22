@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -15,7 +16,7 @@ interface HourlyForecastScrollProps {
   settings: WeatherSettings;
 }
 
-export function HourlyForecastScroll({ hourly, settings }: HourlyForecastScrollProps) {
+export const HourlyForecastScroll = memo(function HourlyForecastScroll({ hourly, settings }: HourlyForecastScrollProps) {
   const { theme } = useTheme();
 
   if (!hourly || hourly.length === 0) return null;
@@ -75,7 +76,7 @@ export function HourlyForecastScroll({ hourly, settings }: HourlyForecastScrollP
       </ScrollView>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

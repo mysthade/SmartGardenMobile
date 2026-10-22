@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Calendar } from 'lucide-react-native';
 import { useTheme } from '@/src/theme/theme-context';
@@ -10,7 +11,7 @@ interface DailyForecastListProps {
   settings: WeatherSettings;
 }
 
-export function DailyForecastList({ daily, settings }: DailyForecastListProps) {
+export const DailyForecastList = memo(function DailyForecastList({ daily, settings }: DailyForecastListProps) {
   const { theme } = useTheme();
 
   if (!daily || daily.length === 0) return null;
@@ -83,7 +84,7 @@ export function DailyForecastList({ daily, settings }: DailyForecastListProps) {
       })}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

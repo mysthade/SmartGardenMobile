@@ -42,7 +42,8 @@ export default function WeatherScreen() {
   const [locationMode, setLocationMode] = useState<'my_location' | 'my_garden'>('my_location');
   const [targetBindingGardenId, setTargetBindingGardenId] = useState<string | null>(null);
 
-  const { bindGardenLocation, setActiveLocation } = useWeatherStore();
+  const bindGardenLocation = useWeatherStore((s) => s.bindGardenLocation);
+  const setActiveLocation = useWeatherStore((s) => s.setActiveLocation);
 
   // Query user's gardens
   const gardensQuery = useQuery({

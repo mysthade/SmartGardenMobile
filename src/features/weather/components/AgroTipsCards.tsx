@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import {
   Sparkles,
@@ -16,7 +17,7 @@ interface AgroTipsCardsProps {
   tips: AgroTip[];
 }
 
-export function AgroTipsCards({ tips }: AgroTipsCardsProps) {
+export const AgroTipsCards = memo(function AgroTipsCards({ tips }: AgroTipsCardsProps) {
   const { theme } = useTheme();
 
   if (!tips || tips.length === 0) return null;
@@ -101,7 +102,7 @@ export function AgroTipsCards({ tips }: AgroTipsCardsProps) {
       })}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

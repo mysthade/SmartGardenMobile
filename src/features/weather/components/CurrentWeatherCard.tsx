@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import {
   Sun,
@@ -28,7 +29,7 @@ interface CurrentWeatherCardProps {
   settings: WeatherSettings;
 }
 
-export function CurrentWeatherCard({ weather, settings }: CurrentWeatherCardProps) {
+export const CurrentWeatherCard = memo(function CurrentWeatherCard({ weather, settings }: CurrentWeatherCardProps) {
   const { theme } = useTheme();
   const current = weather.current;
   const today = weather.daily[0];
@@ -198,7 +199,7 @@ export function CurrentWeatherCard({ weather, settings }: CurrentWeatherCardProp
       )}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   card: {

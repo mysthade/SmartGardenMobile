@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -29,7 +30,7 @@ interface WeatherHeaderProps {
   onSelectSavedLocation: (loc: ResolvedLocation) => void;
 }
 
-export function WeatherHeader({
+export const WeatherHeader = memo(function WeatherHeader({
   location,
   settings,
   isOnline,
@@ -219,7 +220,7 @@ export function WeatherHeader({
       )}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {
