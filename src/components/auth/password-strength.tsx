@@ -1,4 +1,3 @@
-import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '@/src/theme/theme-context';
 import type { ThemeTokens } from '@/src/theme/tokens';

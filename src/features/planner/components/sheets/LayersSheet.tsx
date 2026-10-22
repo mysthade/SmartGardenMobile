@@ -1,4 +1,3 @@
-import React from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Eye, EyeOff, Lock, Unlock, X } from 'lucide-react-native';

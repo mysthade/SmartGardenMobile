@@ -1,4 +1,4 @@
-import React, { type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text } from 'react-native';
 import { Settings } from 'lucide-react-native';
 import { useTheme } from '@/src/theme/theme-context';

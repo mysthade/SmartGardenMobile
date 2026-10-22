@@ -1,4 +1,3 @@
-import React from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { AlertTriangle } from 'lucide-react-native';
 import type { ThemeTokens } from '@/src/theme/tokens';

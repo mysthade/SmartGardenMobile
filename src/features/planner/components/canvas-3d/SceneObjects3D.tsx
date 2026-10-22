@@ -1,4 +1,4 @@
-import React, { memo } from 'react';
+import { memo } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
 import type { CanvasPlanObject } from '../../types';
 import { getModel3DConfig } from '../../constants/planner-3d-models';
