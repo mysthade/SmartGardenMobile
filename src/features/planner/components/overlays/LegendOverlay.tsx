@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { ChevronDown, ChevronUp, Layers } from 'lucide-react-native';
+import { ChevronDown, ChevronUp, Eye, EyeOff, Layers } from 'lucide-react-native';
 import type { PlanObjectLayer } from '@smart-garden/types';
 import { useGardenPlannerStore } from '../../store/use-planner-store';
 
@@ -20,6 +20,8 @@ export const LegendOverlay = React.memo(function LegendOverlay({ isDark }: Legen
   const [expanded, setExpanded] = useState(false);
   const objects = useGardenPlannerStore((s) => s.objects);
   const objectIds = useGardenPlannerStore((s) => s.objectIds);
+  const layersVisibility = useGardenPlannerStore((s) => s.layersVisibility);
+  const toggleLayerVisibility = useGardenPlannerStore((s) => s.toggleLayerVisibility);
 
   const layerCounts = useMemo(() => {
     const counts: Record<PlanObjectLayer, number> = {
@@ -56,7 +58,7 @@ export const LegendOverlay = React.memo(function LegendOverlay({ isDark }: Legen
         style={styles.header}
         onPress={() => setExpanded((v) => !v)}
         accessibilityRole="button"
-        accessibilityLabel="Легенда шарів"
+        accessibilityLabel={`Легенда шарів, всього ${totalCount} обʼєктів`}
       >
         <Layers size={14} color={isDark ? '#94a3b8' : '#64748b'} />
         <Text style={[styles.title, { color: isDark ? '#e2e8f0' : '#1e293b' }]}>
@@ -74,8 +76,16 @@ export const LegendOverlay = React.memo(function LegendOverlay({ isDark }: Legen
           {(Object.keys(LAYER_CONFIG) as PlanObjectLayer[]).map((layer) => {
             const count = layerCounts[layer] || 0;
             const config = LAYER_CONFIG[layer];
+            const isVisible = layersVisibility[layer];
+
             return (
-              <View key={layer} style={styles.row}>
+              <Pressable
+                key={layer}
+                style={[styles.row, !isVisible && { opacity: 0.45 }]}
+                onPress={() => toggleLayerVisibility(layer)}
+                accessibilityRole="button"
+                accessibilityLabel={`${config.label}: ${count} обʼєктів, ${isVisible ? 'видимий' : 'прихований'}`}
+              >
                 <View style={[styles.dot, { backgroundColor: config.color }]} />
                 <Text style={[styles.layerName, { color: isDark ? '#cbd5e1' : '#475569' }]}>
                   {config.label}
@@ -83,7 +93,12 @@ export const LegendOverlay = React.memo(function LegendOverlay({ isDark }: Legen
                 <Text style={[styles.count, { color: isDark ? '#94a3b8' : '#64748b' }]}>
                   {count}
                 </Text>
-              </View>
+                {isVisible ? (
+                  <Eye size={12} color={isDark ? '#94a3b8' : '#64748b'} />
+                ) : (
+                  <EyeOff size={12} color={isDark ? '#ef4444' : '#dc2626'} />
+                )}
+              </Pressable>
             );
           })}
         </View>
@@ -97,7 +112,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 14,
     left: 14,
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
     overflow: 'hidden',
     shadowColor: '#000',
@@ -120,12 +135,13 @@ const styles = StyleSheet.create({
   body: {
     paddingHorizontal: 10,
     paddingBottom: 8,
-    gap: 5,
+    gap: 6,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    paddingVertical: 2,
   },
   dot: {
     width: 8,
@@ -139,5 +155,6 @@ const styles = StyleSheet.create({
   count: {
     fontSize: 11,
     fontWeight: '700',
+    marginRight: 2,
   },
 });

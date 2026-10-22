@@ -16,11 +16,16 @@ import {
   type SnapGuide,
 } from '@smart-garden/validation';
 import type {
+  Camera3DState,
+  CameraPreset,
   CanvasPlanObject,
+  CustomGuideline,
   GridSettings,
   LineDrawingState,
+  PinnedMeasurementPin,
   PlannerSettings,
   PlannerTool,
+  PlannerViewMode,
   PlanSnapshot,
   SaveStatus,
   ViewTransform,
@@ -58,12 +63,22 @@ export interface GardenPlannerState {
   selectedLineVertex: { objectId: string; vertexIdx: number } | null;
   isDragging: boolean;
   activeGuides: SnapGuide[];
+  customGuidelines: CustomGuideline[];
+  measurePoints: Array<{ xCm: number; yCm: number }>;
+  pinnedMeasurements: PinnedMeasurementPin[];
+  areaPoints: Array<{ xCm: number; yCm: number }>;
   saveStatus: SaveStatus;
   lastError: string | null;
   isMultiSelectMode: boolean;
   history: { past: PlanSnapshot[]; future: PlanSnapshot[] };
+  viewMode: PlannerViewMode;
+  camera3D: Camera3DState;
 
   // Actions
+  setViewMode: (mode: PlannerViewMode) => void;
+  setCamera3D: (patch: Partial<Camera3DState>) => void;
+  applyCameraPreset: (preset: CameraPreset) => void;
+  resetCamera3D: () => void;
   toggleMultiSelect: () => void;
   hydrate: (planDetails: GardenPlanDetailsDto, allPlans: GardenPlanDto[], gardenName?: string) => void;
   select: (ids: string | string[], additive?: boolean) => void;
@@ -93,10 +108,14 @@ export interface GardenPlannerState {
   deleteLineObjectVertex: (objectId: string, vertexIdx: number) => void;
 
   // Settings & toggles
-  setGridStep: (stepCm: 10 | 50 | 100) => void;
+  setGridStep: (stepCm: 5 | 10 | 50 | 100) => void;
   toggleGrid: () => void;
   toggleSnap: () => void;
   toggleRulers: () => void;
+  setMeasurementUnit: (unit: 'm' | 'cm' | 'ft') => void;
+  setMeasurementPrecision: (precision: 0.01 | 0.1 | 1) => void;
+  toggleSlowDrag: () => void;
+  toggleCheckRules: () => void;
   toggleLayerVisibility: (layer: PlanObjectLayer) => void;
   toggleLayerLock: (layer: PlanObjectLayer) => void;
   setNorthAngle: (deg: number) => void;
@@ -118,10 +137,24 @@ export interface GardenPlannerState {
   ) => void;
   moveSelected: (dxCm: number, dyCm: number) => void;
   duplicateSelected: () => void;
+  duplicateWithOffset: (dxCm: number, dyCm: number) => void;
+  createArray: (count: number, stepXCm: number, stepYCm: number) => void;
+  alignSelected: (alignment: 'left' | 'right' | 'top' | 'bottom' | 'center-x' | 'center-y') => void;
+  distributeSelected: (axis: 'horizontal' | 'vertical') => void;
   deleteSelected: () => void;
   toggleLockSelected: () => void;
   bringForwardSelected: () => void;
   sendBackwardSelected: () => void;
+
+  // Custom Guidelines & Measurements
+  addCustomGuideline: (type: 'vertical' | 'horizontal', posCm: number) => void;
+  removeCustomGuideline: (id: string) => void;
+  addMeasurePoint: (pt: { xCm: number; yCm: number }) => void;
+  clearMeasurePoints: () => void;
+  saveMeasurePin: (label?: string) => void;
+  removeMeasurePin: (id: string) => void;
+  addAreaPoint: (pt: { xCm: number; yCm: number }) => void;
+  clearAreaPoints: () => void;
 
   setIsDragging: (val: boolean) => void;
   setActiveGuides: (guides: SnapGuide[]) => void;
@@ -136,21 +169,33 @@ export interface GardenPlannerState {
   getActiveObjects: () => CanvasPlanObject[];
 }
 
-function toCanvasObject(dto: PlanObjectDto): CanvasPlanObject {
+function toCanvasObject(dto: PlanObjectDto): CanvasPlanObject | null {
+  if (!dto || typeof dto !== 'object' || !dto.id) {
+    return null;
+  }
+
+  const xCm = Number.isFinite(dto.xCm) ? Math.round(dto.xCm) : 0;
+  const yCm = Number.isFinite(dto.yCm) ? Math.round(dto.yCm) : 0;
+  const widthCm = Number.isFinite(dto.widthCm) && dto.widthCm >= 10 ? Math.round(dto.widthCm) : 100;
+  const heightCm = Number.isFinite(dto.heightCm) && dto.heightCm >= 10 ? Math.round(dto.heightCm) : 100;
+  const rotationDeg = Number.isFinite(dto.rotationDeg)
+    ? Math.round(((dto.rotationDeg % 360) + 360) % 360)
+    : 0;
+
   return {
-    id: dto.id,
-    type: dto.type,
+    id: String(dto.id),
+    type: dto.type || 'CUSTOM',
     label: dto.label || '',
-    xCm: Number.isFinite(dto.xCm) ? dto.xCm : 0,
-    yCm: Number.isFinite(dto.yCm) ? dto.yCm : 0,
-    widthCm: Number.isFinite(dto.widthCm) && dto.widthCm > 0 ? dto.widthCm : 100,
-    heightCm: Number.isFinite(dto.heightCm) && dto.heightCm > 0 ? dto.heightCm : 100,
-    rotationDeg: Number.isFinite(dto.rotationDeg) ? dto.rotationDeg : 0,
+    xCm,
+    yCm,
+    widthCm,
+    heightCm,
+    rotationDeg,
     zIndex: Number.isFinite(dto.zIndex) ? dto.zIndex : 0,
     layer: dto.layer || 'OTHER',
-    color: dto.color,
+    color: dto.color || null,
     locked: Boolean(dto.locked),
-    meta: dto.meta || null,
+    meta: dto.meta && typeof dto.meta === 'object' ? dto.meta : null,
     zoneId: dto.zoneId || null,
     plantId: dto.plantId || null,
   };
@@ -193,13 +238,17 @@ export const useGardenPlannerStore = create<GardenPlannerState>((set, get) => ({
   selectedIds: [],
   hoveredId: null,
   view: { scale: 0.25, offsetX: 20, offsetY: 20 },
-  grid: { enabled: true, stepCm: 50, snap: true },
+  grid: { enabled: true, stepCm: 10, snap: true },
   settings: {
     showCollisions: true,
     showRulers: true,
     objectSnap: true,
     lockAspectRatio: false,
     rotationSnap15: true,
+    measurementUnit: 'm',
+    measurementPrecision: 0.01,
+    slowDrag: false,
+    checkRules: true,
   },
   layersVisibility: {
     BUILDINGS: true,
@@ -222,10 +271,95 @@ export const useGardenPlannerStore = create<GardenPlannerState>((set, get) => ({
   selectedLineVertex: null,
   isDragging: false,
   activeGuides: [],
+  customGuidelines: [],
+  measurePoints: [],
+  pinnedMeasurements: [],
+  areaPoints: [],
   saveStatus: 'idle',
   lastError: null,
   isMultiSelectMode: false,
   history: { past: [], future: [] },
+  viewMode: '2D',
+  camera3D: {
+    yawDeg: 0,
+    pitchDeg: 45,
+    distance: 1.0,
+    targetX: 0,
+    targetY: 0,
+  },
+
+  setViewMode: (mode) => {
+    set({ viewMode: mode });
+  },
+
+  setCamera3D: (patch) => {
+    set((s) => ({
+      camera3D: {
+        ...s.camera3D,
+        ...patch,
+      },
+    }));
+  },
+
+  applyCameraPreset: (preset) => {
+    set((s) => {
+      let yaw = s.camera3D.yawDeg;
+      let pitch = s.camera3D.pitchDeg;
+      switch (preset) {
+        case 'top':
+          yaw = 0;
+          pitch = 85;
+          break;
+        case 'isometric':
+          yaw = 45;
+          pitch = 35.264;
+          break;
+        case 'perspective':
+          yaw = 0;
+          pitch = 45;
+          break;
+        case 'ground':
+          yaw = s.camera3D.yawDeg;
+          pitch = 6;
+          break;
+        case 'north':
+          yaw = 0;
+          pitch = 15;
+          break;
+        case 'east':
+          yaw = 90;
+          pitch = 15;
+          break;
+        case 'south':
+          yaw = 180;
+          pitch = 15;
+          break;
+        case 'west':
+          yaw = 270;
+          pitch = 15;
+          break;
+      }
+      return {
+        camera3D: {
+          ...s.camera3D,
+          yawDeg: yaw,
+          pitchDeg: pitch,
+        },
+      };
+    });
+  },
+
+  resetCamera3D: () => {
+    set({
+      camera3D: {
+        yawDeg: 0,
+        pitchDeg: 45,
+        distance: 1.0,
+        targetX: 0,
+        targetY: 0,
+      },
+    });
+  },
 
   toggleMultiSelect: () => {
     set((s) => ({ isMultiSelectMode: !s.isMultiSelectMode }));
@@ -239,8 +373,11 @@ export const useGardenPlannerStore = create<GardenPlannerState>((set, get) => ({
       (a, b) => a.zIndex - b.zIndex,
     );
     for (const obj of sortedObjects) {
-      objectsMap[obj.id] = toCanvasObject(obj);
-      ids.push(obj.id);
+      const parsed = toCanvasObject(obj);
+      if (parsed) {
+        objectsMap[parsed.id] = parsed;
+        ids.push(parsed.id);
+      }
     }
 
     set({
@@ -639,6 +776,30 @@ export const useGardenPlannerStore = create<GardenPlannerState>((set, get) => ({
     }));
   },
 
+  setMeasurementUnit: (measurementUnit) => {
+    set((state) => ({
+      settings: { ...state.settings, measurementUnit },
+    }));
+  },
+
+  setMeasurementPrecision: (measurementPrecision) => {
+    set((state) => ({
+      settings: { ...state.settings, measurementPrecision },
+    }));
+  },
+
+  toggleSlowDrag: () => {
+    set((state) => ({
+      settings: { ...state.settings, slowDrag: !state.settings.slowDrag },
+    }));
+  },
+
+  toggleCheckRules: () => {
+    set((state) => ({
+      settings: { ...state.settings, checkRules: !state.settings.checkRules },
+    }));
+  },
+
   toggleLayerVisibility: (layer) => {
     set((state) => ({
       layersVisibility: {
@@ -692,6 +853,10 @@ export const useGardenPlannerStore = create<GardenPlannerState>((set, get) => ({
 
   addObjectFromPreset: (type, posCm) => {
     const state = get();
+    if (state.objectIds.length >= 500) {
+      set({ lastError: 'Досягнуто ліміт максимальної кількості обʼєктів на плані (500)' });
+      return '';
+    }
     const preset = PLAN_OBJECT_PRESETS[type] ?? PLAN_OBJECT_PRESETS.CUSTOM;
     const newId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const maxZ = Math.max(0, ...Object.values(state.objects).map((o) => o.zIndex));
@@ -763,17 +928,35 @@ export const useGardenPlannerStore = create<GardenPlannerState>((set, get) => ({
       if (!obj || obj.locked) return state;
 
       const hist = pushSnapshot(state);
+      const safeWidth =
+        transform.widthCm !== undefined
+          ? Math.max(10, Math.round(transform.widthCm))
+          : obj.widthCm;
+      const safeHeight =
+        transform.heightCm !== undefined
+          ? Math.max(10, Math.round(transform.heightCm))
+          : obj.heightCm;
+      const safeX =
+        transform.xCm !== undefined && Number.isFinite(transform.xCm)
+          ? Math.round(transform.xCm)
+          : obj.xCm;
+      const safeY =
+        transform.yCm !== undefined && Number.isFinite(transform.yCm)
+          ? Math.round(transform.yCm)
+          : obj.yCm;
+      const safeRot =
+        transform.rotationDeg !== undefined
+          ? Math.round(((transform.rotationDeg % 360) + 360) % 360)
+          : obj.rotationDeg;
+
       const updated: CanvasPlanObject = {
         ...obj,
         ...transform,
-        xCm: transform.xCm !== undefined ? Math.round(transform.xCm) : obj.xCm,
-        yCm: transform.yCm !== undefined ? Math.round(transform.yCm) : obj.yCm,
-        widthCm: transform.widthCm !== undefined ? Math.round(transform.widthCm) : obj.widthCm,
-        heightCm: transform.heightCm !== undefined ? Math.round(transform.heightCm) : obj.heightCm,
-        rotationDeg:
-          transform.rotationDeg !== undefined
-            ? Math.round(((transform.rotationDeg % 360) + 360) % 360)
-            : obj.rotationDeg,
+        xCm: safeX,
+        yCm: safeY,
+        widthCm: safeWidth,
+        heightCm: safeHeight,
+        rotationDeg: safeRot,
       };
 
       return {
@@ -853,7 +1036,7 @@ export const useGardenPlannerStore = create<GardenPlannerState>((set, get) => ({
 
         maxZ += 1;
         const newId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-        const offset = state.grid.stepCm || 50;
+        const offset = 50;
 
         const duplicatedMeta = obj.meta ? JSON.parse(JSON.stringify(obj.meta)) : null;
         if (duplicatedMeta?.linePoints && Array.isArray(duplicatedMeta.linePoints)) {
@@ -893,6 +1076,278 @@ export const useGardenPlannerStore = create<GardenPlannerState>((set, get) => ({
       };
     });
     get().computeCollisions();
+  },
+
+  duplicateWithOffset: (dxCm, dyCm) => {
+    set((state) => {
+      if (!state.selectedIds.length) return state;
+      const hist = pushSnapshot(state);
+      const nextObjects = { ...state.objects };
+      const nextObjectIds = [...state.objectIds];
+      const nextDirty = new Set(state.dirtyIds);
+      const newSelected: string[] = [];
+
+      let maxZ = Math.max(0, ...Object.values(state.objects).map((o) => o.zIndex));
+
+      for (const id of state.selectedIds) {
+        const obj = nextObjects[id];
+        if (!obj || obj.deleted) continue;
+
+        maxZ += 1;
+        const newId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const duplicatedMeta = obj.meta ? JSON.parse(JSON.stringify(obj.meta)) : null;
+
+        const clone: CanvasPlanObject = {
+          ...obj,
+          id: newId,
+          clientId: newId,
+          isNew: true,
+          label: `${obj.label} (копія)`,
+          xCm: Math.round(obj.xCm + dxCm),
+          yCm: Math.round(obj.yCm + dyCm),
+          zIndex: maxZ,
+          meta: duplicatedMeta,
+        };
+
+        nextObjects[newId] = clone;
+        nextObjectIds.push(newId);
+        nextDirty.add(newId);
+        newSelected.push(newId);
+      }
+
+      return {
+        objects: nextObjects,
+        objectIds: nextObjectIds,
+        dirtyIds: Array.from(nextDirty),
+        selectedIds: newSelected,
+        history: hist,
+        saveStatus: 'dirty',
+      };
+    });
+    get().computeCollisions();
+  },
+
+  createArray: (count, stepXCm, stepYCm) => {
+    set((state) => {
+      if (state.selectedIds.length !== 1 || count < 1) return state;
+      const primaryId = state.selectedIds[0]!;
+      const obj = state.objects[primaryId];
+      if (!obj || obj.deleted) return state;
+
+      const hist = pushSnapshot(state);
+      const nextObjects = { ...state.objects };
+      const nextObjectIds = [...state.objectIds];
+      const nextDirty = new Set(state.dirtyIds);
+      const newSelected: string[] = [primaryId];
+
+      let maxZ = Math.max(0, ...Object.values(state.objects).map((o) => o.zIndex));
+
+      for (let i = 1; i <= count; i++) {
+        maxZ += 1;
+        const newId = `tmp-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}`;
+        const duplicatedMeta = obj.meta ? JSON.parse(JSON.stringify(obj.meta)) : null;
+
+        const clone: CanvasPlanObject = {
+          ...obj,
+          id: newId,
+          clientId: newId,
+          isNew: true,
+          label: `${obj.label} #${i + 1}`,
+          xCm: Math.round(obj.xCm + stepXCm * i),
+          yCm: Math.round(obj.yCm + stepYCm * i),
+          zIndex: maxZ,
+          meta: duplicatedMeta,
+        };
+
+        nextObjects[newId] = clone;
+        nextObjectIds.push(newId);
+        nextDirty.add(newId);
+        newSelected.push(newId);
+      }
+
+      return {
+        objects: nextObjects,
+        objectIds: nextObjectIds,
+        dirtyIds: Array.from(nextDirty),
+        selectedIds: newSelected,
+        history: hist,
+        saveStatus: 'dirty',
+      };
+    });
+    get().computeCollisions();
+  },
+
+  alignSelected: (alignment) => {
+    set((state) => {
+      if (state.selectedIds.length < 2) return state;
+      const hist = pushSnapshot(state);
+      const nextObjects = { ...state.objects };
+      const nextDirty = new Set(state.dirtyIds);
+
+      const validObjs = state.selectedIds
+        .map((id) => nextObjects[id])
+        .filter((o): o is CanvasPlanObject => Boolean(o && !o.locked));
+      if (validObjs.length < 2) return state;
+
+      let targetVal = 0;
+      if (alignment === 'left') {
+        targetVal = Math.min(...validObjs.map((o) => o.xCm));
+        for (const obj of validObjs) {
+          nextObjects[obj.id] = { ...obj, xCm: targetVal };
+          nextDirty.add(obj.id);
+        }
+      } else if (alignment === 'right') {
+        targetVal = Math.max(...validObjs.map((o) => o.xCm + o.widthCm));
+        for (const obj of validObjs) {
+          nextObjects[obj.id] = { ...obj, xCm: targetVal - obj.widthCm };
+          nextDirty.add(obj.id);
+        }
+      } else if (alignment === 'top') {
+        targetVal = Math.min(...validObjs.map((o) => o.yCm));
+        for (const obj of validObjs) {
+          nextObjects[obj.id] = { ...obj, yCm: targetVal };
+          nextDirty.add(obj.id);
+        }
+      } else if (alignment === 'bottom') {
+        targetVal = Math.max(...validObjs.map((o) => o.yCm + o.heightCm));
+        for (const obj of validObjs) {
+          nextObjects[obj.id] = { ...obj, yCm: targetVal - obj.heightCm };
+          nextDirty.add(obj.id);
+        }
+      } else if (alignment === 'center-x') {
+        const minX = Math.min(...validObjs.map((o) => o.xCm));
+        const maxX = Math.max(...validObjs.map((o) => o.xCm + o.widthCm));
+        const targetMidX = (minX + maxX) / 2;
+        for (const obj of validObjs) {
+          nextObjects[obj.id] = { ...obj, xCm: Math.round(targetMidX - obj.widthCm / 2) };
+          nextDirty.add(obj.id);
+        }
+      } else if (alignment === 'center-y') {
+        const minY = Math.min(...validObjs.map((o) => o.yCm));
+        const maxY = Math.max(...validObjs.map((o) => o.yCm + o.heightCm));
+        const targetMidY = (minY + maxY) / 2;
+        for (const obj of validObjs) {
+          nextObjects[obj.id] = { ...obj, yCm: Math.round(targetMidY - obj.heightCm / 2) };
+          nextDirty.add(obj.id);
+        }
+      }
+
+      return {
+        objects: nextObjects,
+        dirtyIds: Array.from(nextDirty),
+        history: hist,
+        saveStatus: 'dirty',
+      };
+    });
+    get().computeCollisions();
+  },
+
+  distributeSelected: (axis) => {
+    set((state) => {
+      if (state.selectedIds.length < 3) return state;
+      const hist = pushSnapshot(state);
+      const nextObjects = { ...state.objects };
+      const nextDirty = new Set(state.dirtyIds);
+
+      const validObjs = state.selectedIds
+        .map((id) => nextObjects[id])
+        .filter((o): o is CanvasPlanObject => Boolean(o && !o.locked));
+      if (validObjs.length < 3) return state;
+
+      if (axis === 'horizontal') {
+        validObjs.sort((a, b) => a.xCm - b.xCm);
+        const first = validObjs[0]!;
+        const last = validObjs[validObjs.length - 1]!;
+        const totalSpan = last.xCm + last.widthCm - first.xCm;
+        const totalWidths = validObjs.reduce((acc, o) => acc + o.widthCm, 0);
+        const gap = Math.max(0, (totalSpan - totalWidths) / (validObjs.length - 1));
+
+        let currentX = first.xCm;
+        for (const obj of validObjs) {
+          nextObjects[obj.id] = { ...obj, xCm: Math.round(currentX) };
+          nextDirty.add(obj.id);
+          currentX += obj.widthCm + gap;
+        }
+      } else {
+        validObjs.sort((a, b) => a.yCm - b.yCm);
+        const first = validObjs[0]!;
+        const last = validObjs[validObjs.length - 1]!;
+        const totalSpan = last.yCm + last.heightCm - first.yCm;
+        const totalHeights = validObjs.reduce((acc, o) => acc + o.heightCm, 0);
+        const gap = Math.max(0, (totalSpan - totalHeights) / (validObjs.length - 1));
+
+        let currentY = first.yCm;
+        for (const obj of validObjs) {
+          nextObjects[obj.id] = { ...obj, yCm: Math.round(currentY) };
+          nextDirty.add(obj.id);
+          currentY += obj.heightCm + gap;
+        }
+      }
+
+      return {
+        objects: nextObjects,
+        dirtyIds: Array.from(nextDirty),
+        history: hist,
+        saveStatus: 'dirty',
+      };
+    });
+    get().computeCollisions();
+  },
+
+  addCustomGuideline: (type, posCm) => {
+    set((state) => ({
+      customGuidelines: [
+        ...state.customGuidelines,
+        { id: `guide-${Date.now()}`, type, posCm: Math.round(posCm) },
+      ],
+    }));
+  },
+
+  removeCustomGuideline: (id) => {
+    set((state) => ({
+      customGuidelines: state.customGuidelines.filter((g) => g.id !== id),
+    }));
+  },
+
+  addMeasurePoint: (pt) => {
+    set((state) => ({
+      measurePoints: [...state.measurePoints, { xCm: Math.round(pt.xCm), yCm: Math.round(pt.yCm) }],
+    }));
+  },
+
+  clearMeasurePoints: () => {
+    set({ measurePoints: [] });
+  },
+
+  saveMeasurePin: (label) => {
+    set((state) => {
+      if (state.measurePoints.length < 2) return state;
+      const pin: PinnedMeasurementPin = {
+        id: `pin-${Date.now()}`,
+        points: [...state.measurePoints],
+        label: label || 'Вимірювання',
+      };
+      return {
+        pinnedMeasurements: [...state.pinnedMeasurements, pin],
+        measurePoints: [],
+      };
+    });
+  },
+
+  removeMeasurePin: (id) => {
+    set((state) => ({
+      pinnedMeasurements: state.pinnedMeasurements.filter((p) => p.id !== id),
+    }));
+  },
+
+  addAreaPoint: (pt) => {
+    set((state) => ({
+      areaPoints: [...state.areaPoints, { xCm: Math.round(pt.xCm), yCm: Math.round(pt.yCm) }],
+    }));
+  },
+
+  clearAreaPoints: () => {
+    set({ areaPoints: [] });
   },
 
   deleteSelected: () => {

@@ -24,6 +24,8 @@ import {
   Copy,
   Trash2,
   Spline,
+  PieChart,
+  MousePointer,
 } from 'lucide-react-native';
 import type { ThemeTokens } from '@/src/theme/tokens';
 import { usePlannerStore } from '../../store/use-planner-store';
@@ -31,6 +33,8 @@ import { usePlannerStore } from '../../store/use-planner-store';
 interface PlannerBottomBarProps {
   onOpenObjectLibrary: () => void;
   onOpenLayers: () => void;
+  onOpenAreaSummary?: () => void;
+  onOpenObjectList?: () => void;
   onFitToScreen: () => void;
   theme: ThemeTokens;
 }
@@ -38,6 +42,8 @@ interface PlannerBottomBarProps {
 export const PlannerBottomBar = React.memo(function PlannerBottomBar({
   onOpenObjectLibrary,
   onOpenLayers,
+  onOpenAreaSummary,
+  onOpenObjectList,
   onFitToScreen,
   theme,
 }: PlannerBottomBarProps) {
@@ -47,6 +53,8 @@ export const PlannerBottomBar = React.memo(function PlannerBottomBar({
   const isMultiSelectMode = usePlannerStore((s) => s.isMultiSelectMode);
   const activeTool = usePlannerStore((s) => s.activeTool);
   const selectedIds = usePlannerStore((s) => s.selectedIds);
+  const objectIds = usePlannerStore((s) => s.objectIds);
+  const objects = usePlannerStore((s) => s.objects);
   const canUndo = usePlannerStore((s) => s.history.past.length > 0);
   const canRedo = usePlannerStore((s) => s.history.future.length > 0);
 
@@ -62,8 +70,19 @@ export const PlannerBottomBar = React.memo(function PlannerBottomBar({
   const deleteSelected = usePlannerStore((s) => s.deleteSelected);
 
   const isBoundaryEditMode = activeTool === 'boundary';
+  const isMeasureMode = activeTool === 'measure';
+  const isAreaMode = activeTool === 'area';
+
   const toggleBoundaryEditMode = () => {
     setTool(isBoundaryEditMode ? 'select' : 'boundary');
+  };
+
+  const toggleMeasureMode = () => {
+    setTool(isMeasureMode ? 'select' : 'measure');
+  };
+
+  const toggleAreaMode = () => {
+    setTool(isAreaMode ? 'select' : 'area');
   };
   const zoomIn = () => zoomBy(1.2);
   const zoomOut = () => zoomBy(0.8);
@@ -120,6 +139,114 @@ export const PlannerBottomBar = React.memo(function PlannerBottomBar({
             + Об’єкт
           </Text>
         </Pressable>
+
+        {onOpenObjectList && (
+          <Pressable
+            accessibilityLabel={`Список об'єктів (${objectIds.filter((id) => objects[id] && !objects[id]?.deleted).length})`}
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              styles.toggleBtn,
+              {
+                backgroundColor: theme.bg,
+                borderColor: theme.bd,
+                opacity: pressed ? 0.7 : 1,
+              },
+            ]}
+            onPress={onOpenObjectList}
+          >
+            <Layers size={17} color={theme.tx} />
+            <Text maxFontSizeMultiplier={1.2} style={[styles.toggleBtnText, { color: theme.tx }]}>
+              {`Об'єкти: ${objectIds.filter((id) => objects[id] && !objects[id]?.deleted).length}`}
+            </Text>
+          </Pressable>
+        )}
+
+        <View style={[styles.separator, { backgroundColor: theme.bd }]} />
+
+        {/* 1. Tool selection group (Вибір, Виміряти, Площа) */}
+        <Pressable
+          accessibilityLabel="Інструмент вибору"
+          accessibilityRole="button"
+          style={({ pressed }) => [
+            styles.toggleBtn,
+            {
+              backgroundColor: activeTool === 'select' ? theme.ac + '20' : theme.bg,
+              borderColor: activeTool === 'select' ? theme.ac : theme.bd,
+              opacity: pressed ? 0.7 : 1,
+            },
+          ]}
+          onPress={() => setTool('select')}
+        >
+          <MousePointer size={17} color={activeTool === 'select' ? theme.ac : theme.tx} />
+          <Text
+            maxFontSizeMultiplier={1.2}
+            style={[styles.toggleBtnText, { color: activeTool === 'select' ? theme.ac : theme.tx }]}
+          >
+            Вибір
+          </Text>
+        </Pressable>
+
+        <Pressable
+          accessibilityLabel="Інструмент вимірювання лінійкою"
+          accessibilityRole="button"
+          style={({ pressed }) => [
+            styles.toggleBtn,
+            {
+              backgroundColor: isMeasureMode ? '#0284c725' : theme.bg,
+              borderColor: isMeasureMode ? '#0284c7' : theme.bd,
+              opacity: pressed ? 0.7 : 1,
+            },
+          ]}
+          onPress={toggleMeasureMode}
+        >
+          <Ruler size={17} color={isMeasureMode ? '#0284c7' : theme.tx} />
+          <Text
+            maxFontSizeMultiplier={1.2}
+            style={[styles.toggleBtnText, { color: isMeasureMode ? '#0284c7' : theme.tx }]}
+          >
+            Виміряти
+          </Text>
+        </Pressable>
+
+        <Pressable
+          accessibilityLabel="Інструмент вимірювання площі"
+          accessibilityRole="button"
+          style={({ pressed }) => [
+            styles.toggleBtn,
+            {
+              backgroundColor: isAreaMode ? '#05966925' : theme.bg,
+              borderColor: isAreaMode ? '#059669' : theme.bd,
+              opacity: pressed ? 0.7 : 1,
+            },
+          ]}
+          onPress={toggleAreaMode}
+        >
+          <PieChart size={17} color={isAreaMode ? '#059669' : theme.tx} />
+          <Text
+            maxFontSizeMultiplier={1.2}
+            style={[styles.toggleBtnText, { color: isAreaMode ? '#059669' : theme.tx }]}
+          >
+            Площа
+          </Text>
+        </Pressable>
+
+        {onOpenAreaSummary && (
+          <Pressable
+            accessibilityLabel="Зведення площ території"
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              styles.toolBtn,
+              {
+                backgroundColor: theme.bg,
+                borderColor: theme.bd,
+                opacity: pressed ? 0.7 : 1,
+              },
+            ]}
+            onPress={onOpenAreaSummary}
+          >
+            <PieChart size={18} color="#10b981" />
+          </Pressable>
+        )}
 
         <View style={[styles.separator, { backgroundColor: theme.bd }]} />
 
@@ -424,7 +551,8 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
+    paddingLeft: 10,
+    paddingRight: 32,
     gap: 6,
   },
   primaryBtn: {

@@ -6,9 +6,18 @@ import {
   Text,
   View,
 } from 'react-native';
-import { ArrowLeft, ChevronDown, Save } from 'lucide-react-native';
+import {
+  ArrowLeft,
+  ChevronDown,
+  Moon,
+  Save,
+  Settings2,
+  Sun,
+} from 'lucide-react-native';
 import type { ThemeTokens } from '@/src/theme/tokens';
 import type { SaveStatus } from '../../types';
+import { ViewModeSwitcher } from './ViewModeSwitcher';
+import { useGardenPlannerStore } from '../../store/use-planner-store';
 
 interface PlannerTopBarProps {
   planTitle: string;
@@ -17,6 +26,9 @@ interface PlannerTopBarProps {
   onBack: () => void;
   onOpenPlanSelector: () => void;
   onSave: () => void;
+  onOpenSettings?: () => void;
+  onToggleTheme?: () => void;
+  isDark?: boolean;
   theme: ThemeTokens;
 }
 
@@ -27,8 +39,14 @@ export const PlannerTopBar = React.memo(function PlannerTopBar({
   onBack,
   onOpenPlanSelector,
   onSave,
+  onOpenSettings,
+  onToggleTheme,
+  isDark = false,
   theme,
 }: PlannerTopBarProps) {
+  const viewMode = useGardenPlannerStore((s) => s.viewMode);
+  const setViewMode = useGardenPlannerStore((s) => s.setViewMode);
+
   // Status indicator styling
   let statusColor = '#27ae60';
   let statusText = 'Збережено';
@@ -53,112 +71,195 @@ export const PlannerTopBar = React.memo(function PlannerTopBar({
         },
       ]}
     >
-      {/* Back button */}
-      <Pressable
-        accessibilityLabel="Назад"
-        accessibilityRole="button"
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        style={({ pressed }) => [
-          styles.iconBtn,
-          {
-            backgroundColor: theme.bg,
-            borderColor: theme.bd,
-            opacity: pressed ? 0.7 : 1,
-          },
-        ]}
-        onPress={onBack}
-      >
-        <ArrowLeft size={20} color={theme.tx} />
-      </Pressable>
-
-      {/* Plan Selector Trigger */}
-      <Pressable
-        accessibilityLabel={`Вибрати план, поточний: ${planTitle}`}
-        accessibilityRole="button"
-        style={({ pressed }) => [
-          styles.planSelectorBtn,
-          {
-            backgroundColor: theme.bg,
-            borderColor: theme.bd,
-            opacity: pressed ? 0.8 : 1,
-          },
-        ]}
-        onPress={onOpenPlanSelector}
-      >
-        <View style={styles.planTitleRow}>
-          <Text
-            numberOfLines={1}
-            ellipsizeMode="tail"
-            maxFontSizeMultiplier={1.3}
-            style={[styles.planTitleText, { color: theme.tx }]}
+      {/* Row 1: Back, Plan Selector (expands), Theme, Settings, Save */}
+      <View style={styles.topRow}>
+        <View style={styles.leftSection}>
+          <Pressable
+            accessibilityLabel="Назад"
+            accessibilityRole="button"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={({ pressed }) => [
+              styles.iconBtn,
+              {
+                backgroundColor: theme.bg,
+                borderColor: theme.bd,
+                opacity: pressed ? 0.7 : 1,
+              },
+            ]}
+            onPress={onBack}
           >
-            {planTitle || 'Без назви'}
-          </Text>
-          <ChevronDown size={16} color={theme.mu} style={styles.chevron} />
+            <ArrowLeft size={20} color={theme.tx} />
+          </Pressable>
+
+          <Pressable
+            accessibilityLabel={`Вибрати план, поточний: ${planTitle}`}
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              styles.planSelectorBtn,
+              {
+                backgroundColor: theme.bg,
+                borderColor: theme.bd,
+                opacity: pressed ? 0.8 : 1,
+              },
+            ]}
+            onPress={onOpenPlanSelector}
+          >
+            <View style={styles.planTitleRow}>
+              <Text
+                numberOfLines={1}
+                ellipsizeMode="tail"
+                maxFontSizeMultiplier={1.2}
+                style={[styles.planTitleText, { color: theme.tx }]}
+              >
+                {planTitle || 'Без назви'}
+              </Text>
+              <ChevronDown size={14} color={theme.mu} style={styles.chevron} />
+            </View>
+
+            <View style={styles.statusRow}>
+              <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+              <Text
+                numberOfLines={1}
+                maxFontSizeMultiplier={1.1}
+                style={[styles.statusText, { color: theme.mu }]}
+              >
+                {statusText}
+              </Text>
+            </View>
+          </Pressable>
         </View>
 
-        {/* Compact status row */}
-        <View style={styles.statusRow}>
-          <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-          <Text
-            numberOfLines={1}
-            maxFontSizeMultiplier={1.2}
-            style={[styles.statusText, { color: theme.mu }]}
-          >
-            {statusText}
-          </Text>
-        </View>
-      </Pressable>
+        {/* Action icons + Save button */}
+        <View style={styles.rightSection}>
+          {onToggleTheme && (
+            <Pressable
+              accessibilityLabel={`Перемкнути тему, зараз ${isDark ? 'темна' : 'світла'}`}
+              accessibilityRole="button"
+              hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+              style={({ pressed }) => [
+                styles.iconBtn,
+                {
+                  backgroundColor: theme.bg,
+                  borderColor: theme.bd,
+                  opacity: pressed ? 0.7 : 1,
+                },
+              ]}
+              onPress={onToggleTheme}
+            >
+              {isDark ? (
+                <Sun size={18} color="#f59e0b" />
+              ) : (
+                <Moon size={18} color={theme.tx} />
+              )}
+            </Pressable>
+          )}
 
-      {/* Save Button */}
-      <Pressable
-        accessibilityLabel="Зберегти план"
-        accessibilityRole="button"
-        disabled={saveStatus === 'saving'}
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        style={({ pressed }) => [
-          styles.saveBtn,
-          {
-            backgroundColor: isDirty ? theme.ac : theme.bg,
-            borderColor: isDirty ? theme.ac : theme.bd,
-            opacity: pressed || saveStatus === 'saving' ? 0.7 : 1,
-          },
-        ]}
-        onPress={onSave}
-      >
-        {saveStatus === 'saving' ? (
-          <ActivityIndicator size="small" color={isDirty ? '#fff' : theme.ac} />
-        ) : (
-          <Save size={18} color={isDirty ? '#fff' : theme.tx} />
-        )}
-        <Text
-          maxFontSizeMultiplier={1.2}
-          style={[
-            styles.saveBtnText,
-            { color: isDirty ? '#fff' : theme.tx },
-          ]}
-        >
-          Зберегти
-        </Text>
-      </Pressable>
+          {onOpenSettings && (
+            <Pressable
+              accessibilityLabel="Налаштування планувальника"
+              accessibilityRole="button"
+              hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+              style={({ pressed }) => [
+                styles.iconBtn,
+                {
+                  backgroundColor: theme.bg,
+                  borderColor: theme.bd,
+                  opacity: pressed ? 0.7 : 1,
+                },
+              ]}
+              onPress={onOpenSettings}
+            >
+              <Settings2 size={18} color={theme.tx} />
+            </Pressable>
+          )}
+
+          <Pressable
+            accessibilityLabel="Зберегти план"
+            accessibilityRole="button"
+            disabled={saveStatus === 'saving'}
+            hitSlop={{ top: 8, bottom: 8, left: 6, right: 8 }}
+            style={({ pressed }) => [
+              styles.saveBtn,
+              {
+                backgroundColor: isDirty ? theme.ac : theme.bg,
+                borderColor: isDirty ? theme.ac : theme.bd,
+                opacity: pressed || saveStatus === 'saving' ? 0.75 : 1,
+              },
+            ]}
+            onPress={onSave}
+          >
+            {saveStatus === 'saving' ? (
+              <ActivityIndicator
+                size="small"
+                color={isDirty ? '#fff' : theme.ac}
+              />
+            ) : (
+              <Save size={16} color={isDirty ? '#fff' : theme.tx} />
+            )}
+            <Text
+              numberOfLines={1}
+              maxFontSizeMultiplier={1.2}
+              style={[
+                styles.saveBtnText,
+                { color: isDirty ? '#fff' : theme.tx },
+              ]}
+            >
+              Зберегти
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+
+      {/* Row 2: Centered 2D / 2.5D / 3D Switcher Row */}
+      <View style={styles.modeRow}>
+        <ViewModeSwitcher
+          viewMode={viewMode}
+          onSelectMode={setViewMode}
+          theme={theme}
+        />
+      </View>
     </View>
   );
 });
 
 const styles = StyleSheet.create({
   container: {
-    height: 56,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    zIndex: 20,
+    elevation: 3,
+    paddingTop: 4,
+    paddingBottom: 4,
+  },
+  topRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    zIndex: 10,
-    elevation: 3,
+    paddingHorizontal: 10,
+    paddingVertical: 2,
+    gap: 8,
+  },
+  leftSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    minWidth: 0,
+    gap: 8,
+  },
+  rightSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 0,
+  },
+  modeRow: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 4,
+    paddingBottom: 2,
   },
   iconBtn: {
-    width: 44,
-    height: 44,
+    width: 38,
+    height: 38,
     borderRadius: 10,
     borderWidth: 1,
     alignItems: 'center',
@@ -166,11 +267,11 @@ const styles = StyleSheet.create({
   },
   planSelectorBtn: {
     flex: 1,
-    height: 44,
-    marginHorizontal: 8,
-    paddingHorizontal: 12,
+    minWidth: 0,
+    height: 38,
     borderRadius: 10,
     borderWidth: 1,
+    paddingHorizontal: 10,
     justifyContent: 'center',
   },
   planTitleRow: {
@@ -178,7 +279,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   planTitleText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     flexShrink: 1,
   },
@@ -188,30 +289,29 @@ const styles = StyleSheet.create({
   statusRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 2,
+    gap: 4,
+    marginTop: 1,
   },
   statusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    marginRight: 5,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   statusText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '500',
   },
   saveBtn: {
-    minHeight: 44,
+    height: 38,
     paddingHorizontal: 12,
     borderRadius: 10,
     borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     gap: 6,
   },
   saveBtnText: {
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: 12,
+    fontWeight: '600',
   },
 });

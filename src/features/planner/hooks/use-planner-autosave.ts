@@ -4,6 +4,7 @@ import { ApiClientError } from '@smart-garden/api-client';
 import type { BatchPlanObjectsDto, PlanObjectOperationDto } from '@smart-garden/types';
 import { api, newIdempotencyKey } from '@/src/lib/api';
 import { useGardenPlannerStore } from '../store/use-planner-store';
+import { plannerDraftStore } from '../utils/planner-draft';
 import type { SaveStatus } from '../types';
 export type { SaveStatus };
 
@@ -16,15 +17,45 @@ export function usePlannerAutosave(gardenId: string, planId: string | null) {
 
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSavingRef = useRef<boolean>(false);
+  const hasPendingSaveRef = useRef<boolean>(false);
+  const isMountedRef = useRef<boolean>(true);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
 
   const performSave = useCallback(async () => {
-    if (!planId || isSavingRef.current) return;
+    if (!planId) return;
+
+    if (isSavingRef.current) {
+      hasPendingSaveRef.current = true;
+      return;
+    }
 
     const currentStore = useGardenPlannerStore.getState();
     if (currentStore.saveStatus !== 'dirty') return;
 
     isSavingRef.current = true;
-    setSaveStatus('saving');
+    if (isMountedRef.current) {
+      setSaveStatus('saving');
+    }
+
+    // Save local draft before attempting network request
+    void plannerDraftStore.saveDraft(planId, {
+      plan: currentStore.plan,
+      objects: currentStore.objects,
+      dirtyIds: currentStore.dirtyIds,
+    });
 
     const ops: PlanObjectOperationDto[] = [];
     const dirtyIds = currentStore.dirtyIds;
@@ -79,30 +110,60 @@ export function usePlannerAutosave(gardenId: string, planId: string | null) {
       objects: ops,
     };
 
-    try {
-      const response = await api.saveGardenPlanObjects(
-        planId,
-        payload,
-        newIdempotencyKey('save-plan'),
-      );
+    abortControllerRef.current = new AbortController();
 
-      applyIdMap(response.idMap, response.plan.version);
-      setSaveStatus('saved');
+    let retryCount = 0;
+    const maxRetries = 2;
 
-      // Точкове оновлення кешу
-      void queryClient.invalidateQueries({ queryKey: ['gardens', gardenId, 'plans'] });
-      void queryClient.invalidateQueries({ queryKey: ['plans', planId] });
-      void queryClient.invalidateQueries({ queryKey: ['zones'] });
-      void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-    } catch (err: unknown) {
-      if (err instanceof ApiClientError && err.statusCode === 409) {
-        setSaveStatus('error', 'Конфлікт: план оновлено на сервері іншим пристроєм');
-      } else {
-        const msg = err instanceof Error ? err.message : 'Помилка збереження';
-        setSaveStatus('error', msg);
+    while (retryCount <= maxRetries) {
+      try {
+        const response = await api.saveGardenPlanObjects(
+          planId,
+          payload,
+          newIdempotencyKey('save-plan'),
+        );
+
+        if (!isMountedRef.current) return;
+
+        applyIdMap(response.idMap, response.plan.version);
+        setSaveStatus('saved');
+        void plannerDraftStore.clearDraft(planId);
+
+        // Точкове оновлення кешу
+        void queryClient.invalidateQueries({ queryKey: ['gardens', gardenId, 'plans'] });
+        void queryClient.invalidateQueries({ queryKey: ['plans', planId] });
+        void queryClient.invalidateQueries({ queryKey: ['zones'] });
+        void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+        break;
+      } catch (err: unknown) {
+        if (err instanceof ApiClientError && err.statusCode === 409) {
+          if (isMountedRef.current) {
+            setSaveStatus('error', 'Конфлікт: план оновлено на сервері іншим пристроєм');
+          }
+          break;
+        }
+
+        // Retry on network errors
+        if (retryCount < maxRetries && !(err instanceof ApiClientError && err.statusCode >= 400 && err.statusCode < 500)) {
+          retryCount++;
+          await new Promise((resolve) => setTimeout(resolve, 800 * retryCount));
+          continue;
+        }
+
+        if (isMountedRef.current) {
+          const msg = err instanceof Error ? err.message : 'Помилка збереження';
+          setSaveStatus('error', msg);
+        }
+        break;
       }
-    } finally {
-      isSavingRef.current = false;
+    }
+
+    isSavingRef.current = false;
+
+    // Якщо за час збереження надійшли нові зміни, запускаємо повторне збереження
+    if (hasPendingSaveRef.current) {
+      hasPendingSaveRef.current = false;
+      void performSave();
     }
   }, [planId, gardenId, queryClient, setSaveStatus, applyIdMap]);
 

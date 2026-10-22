@@ -11,7 +11,9 @@ export type PlannerTool =
   | 'place'
   | 'boundary'
   | 'draw-line'
-  | 'multiselect';
+  | 'multiselect'
+  | 'measure'
+  | 'area';
 
 export interface CanvasPlanObject {
   id: string;
@@ -55,8 +57,20 @@ export interface ViewTransform {
 
 export interface GridSettings {
   enabled: boolean;
-  stepCm: 10 | 50 | 100;
+  stepCm: 5 | 10 | 50 | 100;
   snap: boolean;
+}
+
+export interface CustomGuideline {
+  id: string;
+  type: 'vertical' | 'horizontal';
+  posCm: number;
+}
+
+export interface PinnedMeasurementPin {
+  id: string;
+  points: Array<{ xCm: number; yCm: number }>;
+  label: string;
 }
 
 export interface PlannerSettings {
@@ -65,6 +79,10 @@ export interface PlannerSettings {
   objectSnap: boolean;
   lockAspectRatio: boolean;
   rotationSnap15: boolean;
+  measurementUnit: 'm' | 'cm' | 'ft';
+  measurementPrecision: 0.01 | 0.1 | 1;
+  slowDrag: boolean;
+  checkRules: boolean;
 }
 
 export interface LineDrawingState {
@@ -72,3 +90,24 @@ export interface LineDrawingState {
   points: Array<{ xCm: number; yCm: number }>;
   isCurved: boolean;
 }
+
+export type PlannerViewMode = '2D' | '2.5D' | '3D';
+
+export type CameraPreset =
+  | 'top'
+  | 'isometric'
+  | 'perspective'
+  | 'ground'
+  | 'north'
+  | 'east'
+  | 'south'
+  | 'west';
+
+export interface Camera3DState {
+  yawDeg: number;
+  pitchDeg: number;
+  distance: number;
+  targetX: number;
+  targetY: number;
+}
+

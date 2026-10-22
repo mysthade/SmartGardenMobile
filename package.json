@@ -4,12 +4,15 @@
   "main": "index.ts",
   "dependencies": {
     "@react-native-community/datetimepicker": "^9.2.1",
+    "@react-three/fiber": "^9.8.2",
     "@smart-garden/api-client": "workspace:*",
     "@smart-garden/types": "workspace:*",
     "@smart-garden/validation": "workspace:*",
     "@tanstack/react-query": "^5.67.2",
+    "@types/three": "^0.170.0",
     "expo": "~57.0.25",
     "expo-constants": "~57.0.19",
+    "expo-gl": "~57.0.2",
     "expo-haptics": "~57.0.3",
     "expo-image-picker": "^58.0.10",
     "expo-linear-gradient": "^57.0.2",
@@ -28,6 +31,7 @@
     "react-native-svg": "^15.15.5",
     "react-native-web": "^0.21.2",
     "react-native-worklets": "0.10.1",
+    "three": "^0.170.0",
     "zod": "^3.24.2",
     "zustand": "^5.0.15"
   },

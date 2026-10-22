@@ -26,17 +26,26 @@ import {
 import { usePlannerAutosave } from '@/src/features/planner/hooks/use-planner-autosave';
 
 import { PlannerCanvas } from '@/src/features/planner/components/canvas/PlannerCanvas';
+import { PlannerCanvas25D } from '@/src/features/planner/components/canvas-25d/PlannerCanvas25D';
+import { Planner3DErrorBoundary } from '@/src/features/planner/components/canvas-3d/Planner3DErrorBoundary';
 import { PlannerTopBar } from '@/src/features/planner/components/toolbar/PlannerTopBar';
 import { PlannerBottomBar } from '@/src/features/planner/components/toolbar/PlannerBottomBar';
-import { NorthArrow } from '@/src/features/planner/components/overlays/NorthArrow';
+import { CameraPresetBar } from '@/src/features/planner/components/toolbar/CameraPresetBar';
+import { PlannerControlPanel } from '@/src/features/planner/components/overlays/PlannerControlPanel';
 import { ScaleBar } from '@/src/features/planner/components/overlays/ScaleBar';
 import { LegendOverlay } from '@/src/features/planner/components/overlays/LegendOverlay';
+
+const LazyPlannerCanvas3D = React.lazy(
+  () => import('@/src/features/planner/components/canvas-3d/PlannerCanvas3D'),
+);
 
 import { ObjectLibrarySheet } from '@/src/features/planner/components/sheets/ObjectLibrarySheet';
 import { ObjectPropertiesSheet } from '@/src/features/planner/components/sheets/ObjectPropertiesSheet';
 import { LayersSheet } from '@/src/features/planner/components/sheets/LayersSheet';
 import { PlanSelectorModal } from '@/src/features/planner/components/sheets/PlanSelectorModal';
 import { ConflictModal } from '@/src/features/planner/components/sheets/ConflictModal';
+import { AreaSummaryModal } from '@/src/features/planner/components/sheets/AreaSummaryModal';
+import { ObjectListModal } from '@/src/features/planner/components/sheets/ObjectListModal';
 
 export default function GardenPlannerScreen() {
   const params = useLocalSearchParams<{
@@ -51,7 +60,7 @@ export default function GardenPlannerScreen() {
     ? params.planId[0]
     : params.planId;
 
-  const { theme } = useTheme();
+  const { theme, toggleTheme } = useTheme();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
 
@@ -63,6 +72,8 @@ export default function GardenPlannerScreen() {
   const [isPropertiesOpen, setIsPropertiesOpen] = useState(false);
   const [isLayersOpen, setIsLayersOpen] = useState(false);
   const [isPlanSelectorOpen, setIsPlanSelectorOpen] = useState(false);
+  const [isAreaSummaryOpen, setIsAreaSummaryOpen] = useState(false);
+  const [isObjectListOpen, setIsObjectListOpen] = useState(false);
   const [conflictPendingData, setConflictPendingData] = useState<GardenPlanDetailsDto | null>(null);
 
   // Store bindings
@@ -72,8 +83,14 @@ export default function GardenPlannerScreen() {
   const saveStatus = useGardenPlannerStore((s) => s.saveStatus);
   const isDirty = dirtyIds.length > 0 || saveStatus === 'dirty';
   const selectedIds = useGardenPlannerStore((s) => s.selectedIds);
+  const viewMode = useGardenPlannerStore((s) => s.viewMode);
+  const setViewMode = useGardenPlannerStore((s) => s.setViewMode);
+  const applyCameraPreset = useGardenPlannerStore((s) => s.applyCameraPreset);
+  const resetCamera3D = useGardenPlannerStore((s) => s.resetCamera3D);
   const hydrate = useGardenPlannerStore((s) => s.hydrate);
   const clearSelection = useGardenPlannerStore((s) => s.clearSelection);
+  const select = useGardenPlannerStore((s) => s.select);
+  const setView = useGardenPlannerStore((s) => s.setView);
   const zoomToFit = useGardenPlannerStore((s) => s.zoomToFit);
 
   // Queries
@@ -144,14 +161,16 @@ export default function GardenPlannerScreen() {
     effectivePlanId,
   );
 
-  // Open properties sheet automatically when a single object is selected
+  // Open properties sheet automatically when a single object is selected in 2D
   useEffect(() => {
-    if (selectedIds.length === 1) {
-      setIsPropertiesOpen(true);
-    } else if (selectedIds.length === 0) {
-      setIsPropertiesOpen(false);
+    if (viewMode === '2D') {
+      if (selectedIds.length === 1) {
+        setIsPropertiesOpen(true);
+      } else if (selectedIds.length === 0) {
+        setIsPropertiesOpen(false);
+      }
     }
-  }, [selectedIds.length]);
+  }, [selectedIds.length, viewMode]);
 
   // Fit to screen callback
   const handleFitToScreen = useCallback(() => {
@@ -182,6 +201,11 @@ export default function GardenPlannerScreen() {
     }
   }, [isDirty, saveNow]);
 
+  const handleBackRef = useRef(handleBack);
+  useEffect(() => {
+    handleBackRef.current = handleBack;
+  }, [handleBack]);
+
   // Android Hardware Back button handling
   useEffect(() => {
     const onHardwareBack = () => {
@@ -201,11 +225,15 @@ export default function GardenPlannerScreen() {
         setIsPlanSelectorOpen(false);
         return true;
       }
+      if (isAreaSummaryOpen) {
+        setIsAreaSummaryOpen(false);
+        return true;
+      }
       if (selectedIds.length > 0) {
         clearSelection();
         return true;
       }
-      handleBack();
+      handleBackRef.current();
       return true;
     };
 
@@ -216,9 +244,9 @@ export default function GardenPlannerScreen() {
     isPropertiesOpen,
     isLayersOpen,
     isPlanSelectorOpen,
+    isAreaSummaryOpen,
     selectedIds.length,
     clearSelection,
-    handleBack,
   ]);
 
   // Conflict resolution
@@ -327,7 +355,7 @@ export default function GardenPlannerScreen() {
       {/* Safe Area Top Offset */}
       <View style={{ height: insets.top, backgroundColor: theme.pn }} />
 
-      {/* Top 2-Row Toolbar: Row 1 */}
+      {/* Top Toolbar */}
       <PlannerTopBar
         planTitle={storePlanName || planDetails?.name || 'План саду'}
         saveStatus={autoSaveStatus}
@@ -335,6 +363,9 @@ export default function GardenPlannerScreen() {
         onBack={handleBack}
         onOpenPlanSelector={() => setIsPlanSelectorOpen(true)}
         onSave={() => void saveNow()}
+        onOpenSettings={() => setIsLayersOpen(true)}
+        onToggleTheme={toggleTheme}
+        isDark={isDark}
         theme={theme}
       />
 
@@ -344,23 +375,63 @@ export default function GardenPlannerScreen() {
           <View style={styles.centerAbsolute}>
             <ActivityIndicator size="large" color={theme.ac} />
           </View>
-        ) : (
+        ) : viewMode === '2D' ? (
           <PlannerCanvas isDark={isDark} />
+        ) : viewMode === '2.5D' ? (
+          <PlannerCanvas25D isDark={isDark} />
+        ) : (
+          <Planner3DErrorBoundary
+            isDark={isDark}
+            onFallbackTo25D={() => setViewMode('2.5D')}
+          >
+            <React.Suspense
+              fallback={
+                <View style={styles.centerAbsolute}>
+                  <ActivityIndicator size="large" color={theme.ac} />
+                  <Text style={[styles.loadingText, { color: theme.tx }]}>
+                    Завантаження 3D сцени...
+                  </Text>
+                </View>
+              }
+            >
+              <LazyPlannerCanvas3D
+                isDark={isDark}
+                onFallbackTo25D={() => setViewMode('2.5D')}
+                onOpenProperties={() => setIsPropertiesOpen(true)}
+              />
+            </React.Suspense>
+          </Planner3DErrorBoundary>
         )}
 
         {/* Floating Overlays on Canvas */}
-        <NorthArrow isDark={isDark} />
-        <ScaleBar isDark={isDark} />
-        <LegendOverlay isDark={isDark} />
+        <PlannerControlPanel isDark={isDark} onFitToScreen={handleFitToScreen} />
+        {viewMode === '2D' && (
+          <>
+            <ScaleBar isDark={isDark} />
+            <LegendOverlay isDark={isDark} />
+          </>
+        )}
       </View>
 
-      {/* Bottom 2-Row Toolbar: Row 2 (Horizontally scrollable tools) */}
-      <PlannerBottomBar
-        onOpenObjectLibrary={() => setIsLibraryOpen(true)}
-        onOpenLayers={() => setIsLayersOpen(true)}
-        onFitToScreen={handleFitToScreen}
-        theme={theme}
-      />
+      {/* Bottom Area: 2D Toolbar or Camera Presets Bar */}
+      {viewMode === '2D' ? (
+        <PlannerBottomBar
+          onOpenObjectLibrary={() => setIsLibraryOpen(true)}
+          onOpenLayers={() => setIsLayersOpen(true)}
+          onOpenAreaSummary={() => setIsAreaSummaryOpen(true)}
+          onOpenObjectList={() => setIsObjectListOpen(true)}
+          onFitToScreen={handleFitToScreen}
+          theme={theme}
+        />
+      ) : (
+        <CameraPresetBar
+          onApplyPreset={applyCameraPreset}
+          onResetCamera={resetCamera3D}
+          onEditIn2D={() => setViewMode('2D')}
+          hasSelection={selectedIds.length > 0}
+          theme={theme}
+        />
+      )}
 
       {/* Safe Area Bottom Offset */}
       <View style={{ height: insets.bottom, backgroundColor: theme.pn }} />
@@ -406,6 +477,28 @@ export default function GardenPlannerScreen() {
         onKeepMine={handleKeepMine}
         onTakeServer={handleTakeServer}
         theme={theme}
+      />
+
+      {/* Area Breakdown Summary Modal */}
+      <AreaSummaryModal
+        visible={isAreaSummaryOpen}
+        onClose={() => setIsAreaSummaryOpen(false)}
+        isDark={isDark}
+      />
+
+      {/* Object List Modal */}
+      <ObjectListModal
+        visible={isObjectListOpen}
+        onClose={() => setIsObjectListOpen(false)}
+        onSelectAndCenter={(obj) => {
+          select(obj.id, false);
+          setView({
+            offsetX: width / 2 - (obj.xCm + obj.widthCm / 2) * 0.25,
+            offsetY: height / 2 - (obj.yCm + obj.heightCm / 2) * 0.25,
+          });
+        }}
+        onFitToScreen={handleFitToScreen}
+        isDark={isDark}
       />
     </View>
   );

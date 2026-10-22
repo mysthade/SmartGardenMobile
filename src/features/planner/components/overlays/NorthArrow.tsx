@@ -10,11 +10,23 @@ interface NorthArrowProps {
 export const NorthArrow = React.memo(function NorthArrow({ isDark }: NorthArrowProps) {
   const northAngleDeg = useGardenPlannerStore((s) => s.plan.northAngleDeg);
   const setNorthAngle = useGardenPlannerStore((s) => s.setNorthAngle);
+  const viewMode = useGardenPlannerStore((s) => s.viewMode);
+  const yawDeg = useGardenPlannerStore((s) => s.camera3D.yawDeg);
+  const setCamera3D = useGardenPlannerStore((s) => s.setCamera3D);
+
+  const is3D = viewMode === '2.5D' || viewMode === '3D';
+  // У 3D/2.5D компас показує поточну орієнтацію камери відносно півночі
+  const displayAngle = is3D ? (-yawDeg + northAngleDeg + 360) % 360 : northAngleDeg;
 
   const handlePress = () => {
-    // Циклічний поворот півночі на 90 градусів або скидання
-    const nextAngle = (northAngleDeg + 90) % 360;
-    setNorthAngle(nextAngle);
+    if (is3D) {
+      // Вирівняти камеру на північ
+      setCamera3D({ yawDeg: 0 });
+    } else {
+      // Циклічний поворот півночі на 90 градусів або скидання
+      const nextAngle = (northAngleDeg + 90) % 360;
+      setNorthAngle(nextAngle);
+    }
   };
 
   return (
@@ -28,15 +40,16 @@ export const NorthArrow = React.memo(function NorthArrow({ isDark }: NorthArrowP
       ]}
       onPress={handlePress}
       accessibilityRole="button"
-      accessibilityLabel={`Північ: ${northAngleDeg}°`}
+      accessibilityLabel={`Північ: ${Math.round(displayAngle)}°${is3D ? ' (тап для вирівнювання)' : ''}`}
     >
-      <View style={{ transform: [{ rotate: `${northAngleDeg}deg` }] }}>
+      <View style={{ transform: [{ rotate: `${displayAngle}deg` }] }}>
         <Compass size={22} color="#ef4444" />
       </View>
       <Text style={[styles.label, { color: isDark ? '#e2e8f0' : '#1e293b' }]}>Пн</Text>
     </Pressable>
   );
 });
+
 
 const styles = StyleSheet.create({
   container: {
