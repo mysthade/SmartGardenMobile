@@ -1,237 +1,382 @@
-import { useQuery } from '@tanstack/react-query';
-import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme } from '@/src/theme/theme-context';
+import { useState, useMemo } from 'react';
 import {
-  Sun,
-  Droplets,
-  Wind,
-  Thermometer,
-  ShieldAlert,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  Pressable,
+  useWindowDimensions,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useQuery } from '@tanstack/react-query';
+import {
+  AlertTriangle,
+  RotateCw,
   Sparkles,
-  Calendar,
+  MapPin,
 } from 'lucide-react-native';
+
+import { useTheme } from '@/src/theme/theme-context';
+import { api } from '@/src/lib/api';
+import { useWeather } from '@/src/features/weather/hooks/use-weather';
+import { useWeatherStore } from '@/src/features/weather/lib/weather-store';
+import { WeatherHeader } from '@/src/features/weather/components/WeatherHeader';
+import { CurrentWeatherCard } from '@/src/features/weather/components/CurrentWeatherCard';
+import { HourlyForecastScroll } from '@/src/features/weather/components/HourlyForecastScroll';
+import { DailyForecastList } from '@/src/features/weather/components/DailyForecastList';
+import { AgroTipsCards } from '@/src/features/weather/components/AgroTipsCards';
+import { WeatherSkeleton } from '@/src/features/weather/components/WeatherSkeleton';
+import { LocationSelectModal } from '@/src/features/weather/components/LocationSelectModal';
+import { WeatherSettingsModal } from '@/src/features/weather/components/WeatherSettingsModal';
+import type { ResolvedLocation } from '@/src/features/weather/types';
 
 export default function WeatherScreen() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 600;
 
-  const weatherQuery = useQuery({
-    queryKey: ['weather', 'current'],
-    queryFn: async ({ signal }) => {
-      const res = await fetch(
-        'https://api.open-meteo.com/v1/forecast?latitude=50.4501&longitude=30.5234&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code&timezone=auto',
-        { signal }
-      );
-      if (!res.ok) throw new Error('Помилка завантаження погоди');
-      const data = await res.json();
-      return {
-        temperature: data.current?.temperature_2m ?? 21,
-        humidity: data.current?.relative_humidity_2m ?? 58,
-        windSpeed: data.current?.wind_speed_10m ?? 3.5,
-        condition: 'Сонячно з проясненнями',
-      };
-    },
-    staleTime: 12 * 60_000,
-    gcTime: 30 * 60_000,
+  const [locationModalVisible, setLocationModalVisible] = useState(false);
+  const [settingsModalVisible, setSettingsModalVisible] = useState(false);
+  const [locationMode, setLocationMode] = useState<'my_location' | 'my_garden'>('my_location');
+  const [targetBindingGardenId, setTargetBindingGardenId] = useState<string | null>(null);
+
+  const { bindGardenLocation, setActiveLocation } = useWeatherStore();
+
+  // Query user's gardens
+  const gardensQuery = useQuery({
+    queryKey: ['gardens', 'list'],
+    queryFn: () => api.listGardens({ limit: 20 }),
+    staleTime: 60_000,
   });
 
-  const weather = weatherQuery.data;
+  const firstGarden = gardensQuery.data?.data?.[0];
+
+  // Resolve garden location (from garden coordinates or local binding)
+  const gardenLocation = useMemo<ResolvedLocation | null>(() => {
+    if (!firstGarden) return null;
+
+    // 1. If garden has coordinates in backend
+    if (firstGarden.latitude && firstGarden.longitude) {
+      const lat = parseFloat(firstGarden.latitude);
+      const lon = parseFloat(firstGarden.longitude);
+      if (!isNaN(lat) && !isNaN(lon)) {
+        return {
+          id: `garden_${firstGarden.id}`,
+          name: firstGarden.name,
+          customLabel: firstGarden.locationName || `Сад: ${firstGarden.name}`,
+          country: 'Україна',
+          latitude: lat,
+          longitude: lon,
+          source: 'garden',
+          isIpEstimate: false,
+          updatedAt: Date.now(),
+          gardenId: firstGarden.id,
+        };
+      }
+    }
+
+    // 2. If locally bound
+    const { settings } = useWeatherStore.getState();
+    if (settings.gardenLocationBindings[firstGarden.id]) {
+      return settings.gardenLocationBindings[firstGarden.id];
+    }
+
+    return null;
+  }, [firstGarden]);
+
+  // Target location based on mode switch
+  const customTargetLocation = locationMode === 'my_garden' && gardenLocation ? gardenLocation : undefined;
+
+  const {
+    weather,
+    isLoading,
+    isRefetching,
+    isError,
+    error,
+    isOnline,
+    isOfflineCached,
+    formattedFetchedAt,
+    isDifferentTimezone,
+    activeLocation,
+    settings,
+    refetch,
+  } = useWeather(customTargetLocation);
+
+  const handleLocationSelected = async (loc: ResolvedLocation) => {
+    if (targetBindingGardenId) {
+      await bindGardenLocation(targetBindingGardenId, loc);
+      setTargetBindingGardenId(null);
+      setLocationMode('my_garden');
+    } else {
+      await setActiveLocation(loc);
+    }
+  };
+
+  const handlePromptBindGarden = () => {
+    if (firstGarden) {
+      setTargetBindingGardenId(firstGarden.id);
+      setLocationModalVisible(true);
+    }
+  };
 
   return (
     <ScrollView
       style={[styles.screen, { backgroundColor: theme.bg }]}
-      contentContainerStyle={[styles.content, { paddingTop: insets.top + 16 }]}
+      contentContainerStyle={[
+        styles.content,
+        { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 40 },
+      ]}
       showsVerticalScrollIndicator={false}
       refreshControl={
         <RefreshControl
-          refreshing={weatherQuery.isRefetching}
-          onRefresh={() => void weatherQuery.refetch()}
+          refreshing={isRefetching}
+          onRefresh={() => void refetch()}
           tintColor={theme.ac}
         />
       }
     >
+      {/* Garden / My Location Mode Switcher (if user has a garden) */}
+      {firstGarden && (
+        <View style={[styles.modeSwitcherContainer, { backgroundColor: theme.pn, borderColor: theme.bd }]}>
+          <Pressable
+            style={[
+              styles.modeTab,
+              locationMode === 'my_location' && [styles.modeTabActive, { backgroundColor: theme.ac }],
+            ]}
+            onPress={() => setLocationMode('my_location')}
+            accessibilityRole="tab"
+            accessibilityLabel="Моє поточне місце"
+          >
+            <MapPin size={14} color={locationMode === 'my_location' ? '#ffffff' : theme.mu} />
+            <Text
+              style={[
+                styles.modeTabText,
+                { color: locationMode === 'my_location' ? '#ffffff' : theme.tx },
+              ]}
+              maxFontSizeMultiplier={1.3}
+            >
+              Моє місце
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={[
+              styles.modeTab,
+              locationMode === 'my_garden' && [styles.modeTabActive, { backgroundColor: theme.ac }],
+            ]}
+            onPress={() => {
+              if (!gardenLocation) {
+                handlePromptBindGarden();
+              } else {
+                setLocationMode('my_garden');
+              }
+            }}
+            accessibilityRole="tab"
+            accessibilityLabel={`Мій сад: ${firstGarden.name}`}
+          >
+            <Sparkles size={14} color={locationMode === 'my_garden' ? '#ffffff' : theme.mu} />
+            <Text
+              style={[
+                styles.modeTabText,
+                { color: locationMode === 'my_garden' ? '#ffffff' : theme.tx },
+              ]}
+              numberOfLines={1}
+              maxFontSizeMultiplier={1.3}
+            >
+              {gardenLocation ? `Сад: ${firstGarden.name}` : `Привʼязати «${firstGarden.name}»`}
+            </Text>
+          </Pressable>
+        </View>
+      )}
+
       {/* Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={[styles.title, { color: theme.tx }]}>Погода та рекомендації</Text>
-          <Text style={[styles.subtitle, { color: theme.mu }]}>
-            Метеорологічні дані для планування робіт
+      <WeatherHeader
+        location={weather?.location ?? activeLocation}
+        settings={settings}
+        isOnline={isOnline}
+        isOfflineCached={isOfflineCached}
+        formattedFetchedAt={formattedFetchedAt}
+        isDifferentTimezone={isDifferentTimezone}
+        timezoneName={weather?.timezone}
+        onOpenLocationSelect={() => {
+          setTargetBindingGardenId(null);
+          setLocationModalVisible(true);
+        }}
+        onOpenSettings={() => setSettingsModalVisible(true)}
+        onSelectSavedLocation={(loc) => void setActiveLocation(loc)}
+      />
+
+      {/* Loading Skeleton */}
+      {isLoading && <WeatherSkeleton />}
+
+      {/* Error Card */}
+      {isError && !weather && (
+        <View style={[styles.errorCard, { backgroundColor: theme.pn, borderColor: '#E74C3C' }]}>
+          <AlertTriangle size={32} color="#E74C3C" />
+          <Text style={[styles.errorTitle, { color: theme.tx }]} maxFontSizeMultiplier={1.3}>
+            Не вдалося завантажити погоду
           </Text>
-        </View>
-      </View>
-
-      {/* Main Weather Card */}
-      <View
-        style={[
-          styles.mainWeatherCard,
-          {
-            backgroundColor: theme.name === 'dark' ? '#142219' : '#eaf6ee',
-            borderColor: theme.bd,
-          },
-        ]}
-      >
-        <View style={styles.weatherTopRow}>
-          <View>
-            <Text style={[styles.location, { color: theme.mu }]}>Київ та область</Text>
-            <Text style={[styles.temp, { color: theme.tx }]}>
-              {weather ? `${Math.round(weather.temperature)}°C` : '+21°C'}
-            </Text>
-            <Text style={[styles.condition, { color: theme.ac }]}>
-              {weather?.condition ?? 'Сонячно з проясненнями'}
-            </Text>
-          </View>
-          <Sun size={64} color="#F39C12" />
-        </View>
-
-        {/* Stats Row */}
-        <View style={[styles.statsDivider, { backgroundColor: theme.bd }]} />
-        <View style={styles.statsRow}>
-          <View style={styles.statItem}>
-            <Droplets size={16} color="#2980B9" />
-            <Text style={[styles.statValue, { color: theme.tx }]}>
-              {weather?.humidity ?? '58'}%
-            </Text>
-            <Text style={[styles.statLabel, { color: theme.mu }]}>Вологість</Text>
-          </View>
-          <View style={styles.statItem}>
-            <Wind size={16} color="#16A085" />
-            <Text style={[styles.statValue, { color: theme.tx }]}>
-              {weather?.windSpeed ?? '3.5'} м/с
-            </Text>
-            <Text style={[styles.statLabel, { color: theme.mu }]}>Вітер</Text>
-          </View>
-          <View style={styles.statItem}>
-            <Thermometer size={16} color="#C0392B" />
-            <Text style={[styles.statValue, { color: theme.tx }]}>+14°…+23°</Text>
-            <Text style={[styles.statLabel, { color: theme.mu }]}>Мін / Макс</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Agro Tips */}
-      <View style={styles.sectionHeader}>
-        <View style={styles.sectionTitleRow}>
-          <Sparkles size={18} color={theme.ac} />
-          <Text style={[styles.sectionTitle, { color: theme.tx }]}>Садівничі поради на сьогодні</Text>
-        </View>
-      </View>
-
-      <View style={[styles.tipCard, { backgroundColor: theme.pn, borderColor: theme.bd }]}>
-        <View style={[styles.tipIconWrap, { backgroundColor: '#eaf6ee' }]}>
-          <Droplets size={20} color="#2F8F57" />
-        </View>
-        <View style={styles.tipContent}>
-          <Text style={[styles.tipTitle, { color: theme.tx }]}>Режим поливу</Text>
-          <Text style={[styles.tipText, { color: theme.mu }]}>
-            Сьогодні низька ймовірність опадів. Рекомендується вечірній полив кореневої зони томатів і перцю.
+          <Text style={[styles.errorDesc, { color: theme.mu }]} maxFontSizeMultiplier={1.3}>
+            {error instanceof Error ? error.message : 'Перевірте інтернет-зʼєднання або виберіть інше місце.'}
           </Text>
+          <View style={styles.errorActions}>
+            <Pressable
+              style={[styles.retryButton, { backgroundColor: theme.ac }]}
+              onPress={() => void refetch()}
+            >
+              <RotateCw size={16} color="#ffffff" />
+              <Text style={styles.retryButtonText} maxFontSizeMultiplier={1.3}>
+                Повторити
+              </Text>
+            </Pressable>
+            <Pressable
+              style={[styles.changeLocBtn, { borderColor: theme.bd, backgroundColor: theme.bg }]}
+              onPress={() => setLocationModalVisible(true)}
+            >
+              <Text style={[styles.changeLocText, { color: theme.tx }]} maxFontSizeMultiplier={1.3}>
+                Вибрати місце вручну
+              </Text>
+            </Pressable>
+          </View>
         </View>
-      </View>
+      )}
 
-      <View style={[styles.tipCard, { backgroundColor: theme.pn, borderColor: theme.bd }]}>
-        <View style={[styles.tipIconWrap, { backgroundColor: '#fef5e7' }]}>
-          <ShieldAlert size={20} color="#D35400" />
-        </View>
-        <View style={styles.tipContent}>
-          <Text style={[styles.tipTitle, { color: theme.tx }]}>Захист від шкідників</Text>
-          <Text style={[styles.tipText, { color: theme.mu }]}>
-            Помірний вітер (до 4 м/с) дозволяє проводити біологічну обробку листя в ранкові години.
-          </Text>
-        </View>
-      </View>
+      {/* Weather Content */}
+      {weather && (
+        <>
+          {isTablet ? (
+            // 2-Column Responsive Layout for Tablets / Wide Screens
+            <View style={styles.tabletGrid}>
+              <View style={styles.tabletCol}>
+                <CurrentWeatherCard weather={weather} settings={settings} />
+                <HourlyForecastScroll hourly={weather.hourly} settings={settings} />
+              </View>
+              <View style={styles.tabletCol}>
+                <AgroTipsCards tips={weather.agroTips} />
+                <DailyForecastList daily={weather.daily} settings={settings} />
+              </View>
+            </View>
+          ) : (
+            // Standard Single Column Mobile Layout
+            <>
+              <CurrentWeatherCard weather={weather} settings={settings} />
+              <HourlyForecastScroll hourly={weather.hourly} settings={settings} />
+              <AgroTipsCards tips={weather.agroTips} />
+              <DailyForecastList daily={weather.daily} settings={settings} />
+            </>
+          )}
+        </>
+      )}
 
-      {/* 5-day Forecast */}
-      <View style={styles.sectionHeader}>
-        <View style={styles.sectionTitleRow}>
-          <Calendar size={18} color={theme.ac} />
-          <Text style={[styles.sectionTitle, { color: theme.tx }]}>Прогноз на найближчі дні</Text>
-        </View>
-      </View>
+      {/* Modals */}
+      <LocationSelectModal
+        visible={locationModalVisible}
+        onClose={() => setLocationModalVisible(false)}
+        onLocationSelected={handleLocationSelected}
+      />
 
-      {[
-        { day: 'Сьогодні', icon: '☀️', temp: '+21° / +14°', rain: '10%' },
-        { day: 'Завтра', icon: '⛅', temp: '+22° / +15°', rain: '25%' },
-        { day: 'Середа', icon: '🌦️', temp: '+19° / +12°', rain: '65%' },
-        { day: 'Четвер', icon: '☀️', temp: '+20° / +11°', rain: '15%' },
-        { day: 'Пʼятниця', icon: '🌤️', temp: '+23° / +13°', rain: '20%' },
-      ].map((item, idx) => (
-        <View
-          key={idx}
-          style={[styles.forecastRow, { backgroundColor: theme.pn, borderColor: theme.bd }]}
-        >
-          <Text style={[styles.forecastDay, { color: theme.tx }]}>{item.day}</Text>
-          <Text style={styles.forecastIcon}>{item.icon}</Text>
-          <Text style={[styles.forecastRain, { color: '#2980B9' }]}>💧 {item.rain}</Text>
-          <Text style={[styles.forecastTemp, { color: theme.tx }]}>{item.temp}</Text>
-        </View>
-      ))}
+      <WeatherSettingsModal
+        visible={settingsModalVisible}
+        onClose={() => setSettingsModalVisible(false)}
+      />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  content: { paddingHorizontal: 18, paddingBottom: 40 },
-  header: { marginBottom: 16 },
-  title: { fontSize: 24, fontWeight: '800' },
-  subtitle: { fontSize: 13, marginTop: 4 },
-  mainWeatherCard: {
-    padding: 20,
-    borderRadius: 20,
-    borderWidth: 1,
-    marginBottom: 20,
+  screen: {
+    flex: 1,
   },
-  weatherTopRow: {
+  content: {
+    paddingHorizontal: 18,
+  },
+  modeSwitcherContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  location: { fontSize: 13, fontWeight: '600' },
-  temp: { fontSize: 42, fontWeight: '800', marginTop: 4 },
-  condition: { fontSize: 15, fontWeight: '700', marginTop: 2 },
-  statsDivider: { height: 1, marginBottom: 16 },
-  statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  statItem: { alignItems: 'center', gap: 4 },
-  statValue: { fontSize: 15, fontWeight: '700' },
-  statLabel: { fontSize: 12 },
-  sectionHeader: { marginTop: 12, marginBottom: 12 },
-  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  sectionTitle: { fontSize: 17, fontWeight: '700' },
-  tipCard: {
-    flexDirection: 'row',
-    padding: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    marginBottom: 10,
-    gap: 12,
-  },
-  tipIconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tipContent: { flex: 1 },
-  tipTitle: { fontSize: 15, fontWeight: '700' },
-  tipText: { fontSize: 13, marginTop: 4, lineHeight: 18 },
-  forecastRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    padding: 3,
     borderRadius: 14,
     borderWidth: 1,
-    marginBottom: 8,
+    marginBottom: 14,
   },
-  forecastDay: { fontSize: 15, fontWeight: '600', width: 90 },
-  forecastIcon: { fontSize: 20 },
-  forecastRain: { fontSize: 13, fontWeight: '600', width: 70 },
-  forecastTemp: { fontSize: 14, fontWeight: '700' },
+  modeTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    borderRadius: 11,
+    minHeight: 38,
+  },
+  modeTabActive: {
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  modeTabText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  errorCard: {
+    padding: 24,
+    borderRadius: 20,
+    borderWidth: 1,
+    alignItems: 'center',
+    marginVertical: 20,
+  },
+  errorTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    marginTop: 12,
+  },
+  errorDesc: {
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginTop: 6,
+    marginBottom: 20,
+    maxWidth: 280,
+  },
+  errorActions: {
+    flexDirection: 'row',
+    gap: 10,
+    width: '100%',
+  },
+  retryButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 12,
+    minHeight: 44,
+  },
+  retryButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  changeLocBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    minHeight: 44,
+  },
+  changeLocText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  tabletGrid: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  tabletCol: {
+    flex: 1,
+  },
 });

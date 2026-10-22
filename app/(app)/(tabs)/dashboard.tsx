@@ -19,6 +19,9 @@ import {
   Droplets,
   Calendar,
 } from 'lucide-react-native';
+import { useWeather } from '@/src/features/weather/hooks/use-weather';
+import { getWeatherCodeInfo } from '@/src/features/weather/lib/weather-codes';
+import { formatTemperature } from '@/src/features/weather/lib/weather-units';
 
 export default function DashboardScreen() {
   const { user } = useAuth();
@@ -38,6 +41,11 @@ export default function DashboardScreen() {
 
   const data = summary.data;
   const firstName = user?.name?.split(/\s+/)[0] ?? 'садівнику';
+  const { weather, settings } = useWeather();
+
+  const weatherTemp = weather ? formatTemperature(weather.current.temperature, settings.tempUnit) : '+21°C';
+  const weatherCondition = weather ? getWeatherCodeInfo(weather.current.weatherCode, weather.current.isDay).label : 'Сонячно';
+  const weatherAdvice = weather?.agroTips?.[0]?.description ?? 'Сприятливий день для догляду за грядками та поливу ввечері.';
 
   return (
     <ScrollView
@@ -66,7 +74,7 @@ export default function DashboardScreen() {
       </View>
 
       {/* Weather & Garden Status Banner */}
-      <View
+      <Pressable
         style={[
           styles.statusBanner,
           {
@@ -74,21 +82,28 @@ export default function DashboardScreen() {
             borderColor: theme.bd,
           },
         ]}
+        onPress={() => router.push('/weather')}
+        accessibilityRole="button"
+        accessibilityLabel="Відкрити детальний прогноз погоди"
       >
         <View style={styles.bannerHeader}>
           <View style={styles.bannerBadge}>
             <Sparkles size={14} color={theme.ac} />
-            <Text style={[styles.badgeText, { color: theme.ac }]}>Статус саду</Text>
+            <Text style={[styles.badgeText, { color: theme.ac }]}>
+              {weather ? (weather.location.customLabel || weather.location.name) : 'Статус саду'}
+            </Text>
           </View>
           <View style={styles.bannerRow}>
             <Sun size={18} color="#E67E22" />
-            <Text style={[styles.weatherText, { color: theme.tx }]}>+21°C Сонячно</Text>
+            <Text style={[styles.weatherText, { color: theme.tx }]}>
+              {weatherTemp} {weatherCondition}
+            </Text>
           </View>
         </View>
-        <Text style={[styles.bannerAdvice, { color: theme.tx }]}>
-          Сприятливий день для догляду за грядками та поливу ввечері.
+        <Text style={[styles.bannerAdvice, { color: theme.tx }]} numberOfLines={2}>
+          {weatherAdvice}
         </Text>
-      </View>
+      </Pressable>
 
       {/* Quick Action Chips */}
       <View style={styles.quickActions}>
