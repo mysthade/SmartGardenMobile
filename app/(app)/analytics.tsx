@@ -5,7 +5,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '@/src/lib/api';
 import { useTheme } from '@/src/theme/theme-context';
 import { type ThemeTokens } from '@/src/theme/tokens';
-import { ArrowLeft, TrendingUp, Sprout } from 'lucide-react-native';
+import { ArrowLeft, ChevronRight, Sprout, TrendingUp, Wheat } from 'lucide-react-native';
+import { convertToKg } from '@/src/features/harvests/lib/harvest-calculations';
 
 export default function AnalyticsScreen() {
   const { theme } = useTheme();
@@ -17,7 +18,25 @@ export default function AnalyticsScreen() {
     staleTime: 60_000,
   });
 
+  const harvestsQuery = useQuery({
+    queryKey: ['harvests', 'all'],
+    queryFn: () => api.listAllHarvests({ limit: 100 }),
+    staleTime: 60_000,
+  });
+
   const data = summaryQuery.data;
+  const harvests = harvestsQuery.data?.data ?? [];
+
+  // Total harvest kg this year (synchronized with harvests.tsx)
+  const currentYear = new Date().getFullYear();
+  let seasonMassKg = 0;
+  for (const h of harvests) {
+    if (new Date(h.harvestedAt).getFullYear() === currentYear) {
+      const kg = convertToKg(Number(h.quantity) || 0, h.unit);
+      if (kg !== null) seasonMassKg += kg;
+    }
+  }
+  seasonMassKg = Math.round(seasonMassKg * 10) / 10;
 
   return (
     <ScrollView
@@ -36,6 +55,33 @@ export default function AnalyticsScreen() {
         <Text style={[styles.screenTitle, { color: theme.tx }]}>Аналітика саду</Text>
         <View style={{ width: 40 }} />
       </View>
+
+      {/* Harvest Shortcut Banner */}
+      <Pressable
+        style={[
+          styles.harvestBanner,
+          {
+            backgroundColor: theme.name === 'dark' ? '#261b11' : '#fef5e7',
+            borderColor: theme.bd,
+          },
+        ]}
+        onPress={() => router.push('/harvests' as never)}
+      >
+        <View style={styles.harvestBannerLeft}>
+          <View style={styles.harvestIconWrap}>
+            <Wheat size={22} color="#D35400" />
+          </View>
+          <View>
+            <Text style={[styles.harvestBannerTitle, { color: theme.tx }]}>
+              Урожай сезону {currentYear}: {seasonMassKg} кг
+            </Text>
+            <Text style={[styles.harvestBannerSub, { color: theme.mu }]}>
+              Детальні підсумки, залишки на складі та графіки
+            </Text>
+          </View>
+        </View>
+        <ChevronRight size={18} color="#D35400" />
+      </Pressable>
 
       {/* Overview Stat Cards */}
       <View style={styles.statsGrid}>
@@ -127,6 +173,37 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   screenTitle: { fontSize: 18, fontWeight: '700' },
+  harvestBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  harvestBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  harvestIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  harvestBannerTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  harvestBannerSub: {
+    fontSize: 12,
+    marginTop: 2,
+  },
   statsGrid: { flexDirection: 'row', gap: 12, marginBottom: 16 },
   statCard: {
     flex: 1,

@@ -7,6 +7,7 @@ import {
   Plus,
   Sprout,
   Trash2,
+  Wheat,
 } from 'lucide-react-native';
 import type { PlantDto, ZoneDto } from '@smart-garden/types';
 import { ZoneMiniMap } from '@/src/features/zone-editor/components/ZoneMiniMap';
@@ -37,6 +38,7 @@ type ZoneCardProps = {
   onCarePlant: (plant: { id: string; name: string }) => void;
   onHarvestPlant: (plant: { id: string; name: string }) => void;
   onDeletePlant: (plantId: string, plantName: string) => void;
+  onQuickHarvestZone?: () => void;
 };
 
 function ZoneCardInner({
@@ -54,8 +56,10 @@ function ZoneCardInner({
   onCarePlant,
   onHarvestPlant,
   onDeletePlant,
+  onQuickHarvestZone,
 }: ZoneCardProps) {
   const [contentWidth, setContentWidth] = useState(0);
+  const hasHarvestable = plants.some((p) => p.status === 'HARVESTING' || p.status === 'FRUITING');
 
   return (
     <View style={[styles.zoneBlock, { backgroundColor: theme.pn, borderColor: theme.bd }]}>
@@ -70,7 +74,14 @@ function ZoneCardInner({
             <Sprout size={18} color={theme.ac} />
           </View>
           <View style={styles.zoneInfo}>
-            <Text style={[styles.zoneName, { color: theme.tx }]}>{zone.name}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <Text style={[styles.zoneName, { color: theme.tx }]}>{zone.name}</Text>
+              {hasHarvestable ? (
+                <View style={styles.harvestableBadge}>
+                  <Text style={styles.harvestableText}>Можна збирати</Text>
+                </View>
+              ) : null}
+            </View>
             <Text style={[styles.zoneMeta, { color: theme.mu }]}>
               {`Тип: ${ZONE_TYPE_LABEL[zone.type] ?? zone.type ?? 'Грядка'}`}
               {zone.area ? ` • ${zone.area} м²` : ''}
@@ -81,6 +92,18 @@ function ZoneCardInner({
 
         {/* Actions on Zone */}
         <View style={styles.zoneActions}>
+          {onQuickHarvestZone && plants.length > 0 ? (
+            <Pressable
+              style={[styles.harvestInZoneBtn, { backgroundColor: '#D35400' }]}
+              onPress={onQuickHarvestZone}
+              accessibilityRole="button"
+              accessibilityLabel={`Зібрати урожай у зоні ${zone.name}`}
+            >
+              <Wheat size={14} color="#fff" />
+              <Text style={styles.harvestInZoneText}>Зібрати</Text>
+            </Pressable>
+          ) : null}
+
           <Pressable
             style={[styles.plantInZoneBtn, { backgroundColor: theme.ac }]}
             onPress={onAddPlant}
@@ -201,7 +224,27 @@ const styles = StyleSheet.create({
   zoneInfo: { flex: 1 },
   zoneName: { fontSize: 16, fontWeight: '700' },
   zoneMeta: { fontSize: 12, marginTop: 2 },
+  harvestableBadge: {
+    backgroundColor: '#fdebd0',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  harvestableText: {
+    color: '#D35400',
+    fontSize: 10,
+    fontWeight: '800',
+  },
   zoneActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  harvestInZoneBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+  },
+  harvestInZoneText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   plantInZoneBtn: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -389,6 +389,7 @@ export default function GardensScreen() {
           onCarePlant={handleCarePlant}
           onHarvestPlant={handleHarvestPlant}
           onDeletePlant={handleDeletePlant}
+          onQuickHarvestZone={() => router.push('/harvests' as never)}
         />
       );
     },

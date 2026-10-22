@@ -12,7 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '@/src/lib/api';
 import { useTheme } from '@/src/theme/theme-context';
-import { ArrowLeft, Calendar, Camera } from 'lucide-react-native';
+import { ArrowLeft, Calendar, Camera, Wheat } from 'lucide-react-native';
 
 export default function JournalScreen() {
   const { theme } = useTheme();
@@ -46,7 +46,15 @@ export default function JournalScreen() {
           <ArrowLeft size={18} color={theme.tx} />
         </Pressable>
         <Text style={[styles.screenTitle, { color: theme.tx }]}>Фото-щоденник</Text>
-        <View style={{ width: 40 }} />
+        <Pressable
+          style={[styles.harvestQuickBtn, { backgroundColor: '#D35400' }]}
+          onPress={() => router.push('/harvests' as never)}
+          accessibilityRole="button"
+          accessibilityLabel="Записати збір урожаю"
+        >
+          <Wheat size={14} color="#ffffff" />
+          <Text style={styles.harvestQuickBtnText}>Збір</Text>
+        </Pressable>
       </View>
 
       <FlatList
@@ -131,6 +139,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   screenTitle: { fontSize: 18, fontWeight: '700' },
+  harvestQuickBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+  },
+  harvestQuickBtnText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
   listContent: { paddingHorizontal: 18, paddingBottom: 40 },
   card: {
     padding: 16,
