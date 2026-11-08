@@ -1,4 +1,4 @@
-import { memo, useState, useCallback, useMemo } from 'react';
+import { memo, useState, useMemo, useEffect } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -73,9 +73,9 @@ function OverviewTabInner({
   const isDirty = useMemo(() => isOverviewDirty(plant, formValues), [plant, formValues]);
 
   // Notify parent of dirty state for exit guards
-  useCallback(() => {
+  useEffect(() => {
     onDirtyChange?.(isDirty);
-  }, [isDirty, onDirtyChange])();
+  }, [isDirty, onDirtyChange]);
 
   const handleDateChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
     if (Platform.OS === 'android') {
