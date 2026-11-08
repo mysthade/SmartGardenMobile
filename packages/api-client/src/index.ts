@@ -591,6 +591,10 @@ export class ApiClient {
     });
   }
 
+  listPlantAttachments(plantId: string): Promise<AttachmentDto[]> {
+    return this.request(`/api/v1/plants/${plantId}/attachments`);
+  }
+
   deleteAttachment(attachmentId: string): Promise<MessageResponse> {
     return this.request(`/api/v1/attachments/${attachmentId}`, { method: 'DELETE' });
   }
