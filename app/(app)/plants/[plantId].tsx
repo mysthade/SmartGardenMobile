@@ -25,6 +25,7 @@ import { OverviewTab } from '@/src/features/plants/components/tabs/OverviewTab';
 import { JournalTab } from '@/src/features/plants/components/tabs/JournalTab';
 import { HarvestsTab } from '@/src/features/plants/components/tabs/HarvestsTab';
 import { ProblemsTab } from '@/src/features/plants/components/tabs/ProblemsTab';
+import { PhotosTab } from '@/src/features/plants/components/tabs/PhotosTab';
 import type { PlantTabKey } from '@/src/features/plants/lib/plant-helpers';
 
 export default function PlantDetailScreen() {
@@ -249,8 +250,12 @@ export default function PlantDetailScreen() {
           <ProblemsTab plant={plant} theme={theme} />
         ) : null}
 
+        {activeTab === 'photos' ? (
+          <PhotosTab plantId={plantId} theme={theme} />
+        ) : null}
+
         {/* Placeholder tabs for next stages */}
-        {activeTab !== 'overview' && activeTab !== 'notes' && activeTab !== 'harvests' && activeTab !== 'problems' ? (
+        {activeTab !== 'overview' && activeTab !== 'notes' && activeTab !== 'harvests' && activeTab !== 'problems' && activeTab !== 'photos' ? (
           <ScrollView
             contentContainerStyle={styles.placeholderContainer}
             refreshControl={
