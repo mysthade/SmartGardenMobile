@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { QueryErrorCard } from '@/src/components/QueryErrorCard';
 import { api } from '@/src/lib/api';
 import { useTheme } from '@/src/theme/theme-context';
 import { ArrowLeft, Calendar, Camera, Wheat } from 'lucide-react-native';
@@ -80,6 +81,15 @@ export default function JournalScreen() {
                 Завантаження щоденника…
               </Text>
             </View>
+          ) : (plantsQuery.isError && !plantsQuery.data) || (journalQuery.isError && !journalQuery.data) ? (
+            <QueryErrorCard
+              error={journalQuery.error ?? plantsQuery.error}
+              fallbackMessage="Не вдалося завантажити записи щоденника"
+              onRetry={() => {
+                void plantsQuery.refetch();
+                if (plantId) void journalQuery.refetch();
+              }}
+            />
           ) : (
             <View style={[styles.emptyCard, { backgroundColor: theme.pn, borderColor: theme.bd }]}>
               <Camera size={40} color={theme.ac} />

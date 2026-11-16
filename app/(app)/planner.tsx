@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, ChevronRight, Compass, MapPin } from 'lucide-react-native';
 
+import { QueryErrorCard } from '@/src/components/QueryErrorCard';
 import { api } from '@/src/lib/api';
 import { useTheme } from '@/src/theme/theme-context';
 
@@ -51,6 +52,14 @@ export default function PlannerGatewayScreen() {
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={theme.ac} />
           <Text style={[styles.loadingText, { color: theme.tx }]}>Завантаження садів...</Text>
+        </View>
+      ) : gardensQuery.isError && !gardensQuery.data ? (
+        <View style={[styles.centerContainer, { padding: 24 }]}>
+          <QueryErrorCard
+            error={gardensQuery.error}
+            fallbackMessage="Не вдалося завантажити список садів"
+            onRetry={() => void gardensQuery.refetch()}
+          />
         </View>
       ) : gardens.length === 0 ? (
         <View style={[styles.centerContainer, { padding: 24 }]}>

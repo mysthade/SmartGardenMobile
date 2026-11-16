@@ -15,3 +15,7 @@ export const Sun = createIconMock('Sun');
 export const Moon = createIconMock('Moon');
 export const Check = createIconMock('Check');
 export const X = createIconMock('X');
+export const WifiOff = createIconMock('WifiOff');
+export const RotateCw = createIconMock('RotateCw');
+export const Sprout = createIconMock('Sprout');
+export const AlertTriangle = createIconMock('AlertTriangle');

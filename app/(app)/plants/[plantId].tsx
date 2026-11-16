@@ -6,8 +6,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -25,7 +23,9 @@ import { OverviewTab } from '@/src/features/plants/components/tabs/OverviewTab';
 import { JournalTab } from '@/src/features/plants/components/tabs/JournalTab';
 import { HarvestsTab } from '@/src/features/plants/components/tabs/HarvestsTab';
 import { ProblemsTab } from '@/src/features/plants/components/tabs/ProblemsTab';
+import { CareTab } from '@/src/features/plants/components/tabs/CareTab';
 import { PhotosTab } from '@/src/features/plants/components/tabs/PhotosTab';
+import { PlantTasksTab } from '@/src/features/plants/components/tabs/PlantTasksTab';
 import type { PlantTabKey } from '@/src/features/plants/lib/plant-helpers';
 
 export default function PlantDetailScreen() {
@@ -47,7 +47,6 @@ export default function PlantDetailScreen() {
     isError,
     error,
     refetch,
-    isRefetching,
   } = useQuery({
     queryKey: ['plants', plantId],
     queryFn: () => api.getPlant(plantId),
@@ -250,26 +249,16 @@ export default function PlantDetailScreen() {
           <ProblemsTab plant={plant} theme={theme} />
         ) : null}
 
+        {activeTab === 'care' ? (
+          <CareTab plantId={plantId} theme={theme} />
+        ) : null}
+
         {activeTab === 'photos' ? (
           <PhotosTab plantId={plantId} theme={theme} />
         ) : null}
 
-        {/* Placeholder tabs for next stages */}
-        {activeTab !== 'overview' && activeTab !== 'notes' && activeTab !== 'harvests' && activeTab !== 'problems' && activeTab !== 'photos' ? (
-          <ScrollView
-            contentContainerStyle={styles.placeholderContainer}
-            refreshControl={
-              <RefreshControl
-                refreshing={isRefetching}
-                onRefresh={() => void refetch()}
-                colors={[theme.ac]}
-              />
-            }
-          >
-            <Text style={[styles.placeholderText, { color: theme.mu }]}>
-              Вкладка «{activeTab}» завантажується...
-            </Text>
-          </ScrollView>
+        {activeTab === 'tasks' ? (
+          <PlantTasksTab plantId={plantId} theme={theme} />
         ) : null}
       </KeyboardAvoidingView>
     </View>

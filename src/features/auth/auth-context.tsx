@@ -1,39 +1,41 @@
-import type { UserPublicDto } from '@smart-garden/types';
-import { useQueryClient } from '@tanstack/react-query';
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from 'react';
+import { useNetwork } from '@/src/features/network/network-context';
 import { api } from '@/src/lib/api';
+import { isNetworkError } from '@/src/lib/api-errors';
 import { refreshTokenStore, tokenStore } from '@/src/lib/token-store';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, createContext, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import type { UserPublicDto } from '@smart-garden/types';
 
 type AuthStatus = 'loading' | 'authenticated' | 'anonymous';
 
 type AuthContextValue = {
   status: AuthStatus;
   user: UserPublicDto | null;
+  pendingOfflineRestore: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<string>;
   logout: () => Promise<void>;
   setUser: (user: UserPublicDto | null) => void;
+  retryRestoreSession: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
+  const { isOffline } = useNetwork();
+  const isOfflineRef = useRef(isOffline);
+  isOfflineRef.current = isOffline;
+
   const [status, setStatus] = useState<AuthStatus>('loading');
   const [user, setUser] = useState<UserPublicDto | null>(null);
+  const [pendingOfflineRestore, setPendingOfflineRestore] = useState(false);
 
   const clearClientState = useCallback(() => {
     tokenStore.clear();
     void refreshTokenStore.clear();
     setUser(null);
+    setPendingOfflineRestore(false);
     setStatus('anonymous');
     queryClient.clear();
   }, [queryClient]);
@@ -42,6 +44,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const restoreSession = useCallback(async () => {
     const refreshToken = await refreshTokenStore.get();
     if (!refreshToken) {
+      setPendingOfflineRestore(false);
+      setStatus('anonymous');
+      return;
+    }
+    if (isOfflineRef.current) {
+      setPendingOfflineRestore(true);
       setStatus('anonymous');
       return;
     }
@@ -49,9 +57,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const result = await api.refresh({ clientType: 'mobile', refreshToken });
       tokenStore.set(result.accessToken);
       setUser(result.user);
+      setPendingOfflineRestore(false);
       setStatus('authenticated');
-    } catch {
-      clearClientState();
+    } catch (error) {
+      if (isOfflineRef.current || isNetworkError(error)) {
+        // Не видаляємо refreshToken при відсутності інтернету — відновимо сесію, коли мережа повернеться
+        setPendingOfflineRestore(true);
+        setStatus('anonymous');
+      } else {
+        clearClientState();
+      }
     }
   }, [clearClientState]);
 
@@ -59,12 +74,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void restoreSession();
   }, [restoreSession]);
 
+  // Автоматично відновлюємо сесію, щойно з'явиться інтернет
+  useEffect(() => {
+    if (!isOffline && pendingOfflineRestore) {
+      void restoreSession();
+    }
+  }, [isOffline, pendingOfflineRestore, restoreSession]);
+
   useEffect(() => {
     return api.bindAuthHandlers({
       onAccessToken: (token) => {
         tokenStore.set(token);
       },
       onAuthFailure: () => {
+        if (isOfflineRef.current) {
+          setPendingOfflineRestore(true);
+          return;
+        }
         clearClientState();
       },
     });
@@ -79,6 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await refreshTokenStore.set(result.tokens.refreshToken);
       }
       setUser(result.user);
+      setPendingOfflineRestore(false);
       setStatus('authenticated');
     },
     [queryClient],
@@ -99,8 +126,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [clearClientState]);
 
   const value = useMemo(
-    () => ({ status, user, login, register, logout, setUser }),
-    [status, user, login, register, logout],
+    () => ({
+      status,
+      user,
+      pendingOfflineRestore,
+      login,
+      register,
+      logout,
+      setUser,
+      retryRestoreSession: restoreSession,
+    }),
+    [status, user, pendingOfflineRestore, login, register, logout, restoreSession],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

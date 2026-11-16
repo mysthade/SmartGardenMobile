@@ -15,6 +15,7 @@ import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Layers, Map, Plus } from 'lucide-react-native';
 
+import { QueryErrorCard } from '@/src/components/QueryErrorCard';
 import { api } from '@/src/lib/api';
 import type { ZoneDto } from '@smart-garden/types';
 import { formatApiError } from '@/src/lib/api-errors';
@@ -143,6 +144,9 @@ export default function GardensScreen() {
       setGardenLocation('');
       setGardenArea('');
     },
+    onError: (err) => {
+      Alert.alert('Помилка', formatApiError(err, 'Не вдалося створити сад'));
+    },
   });
 
   const deleteGardenMutation = useMutation({
@@ -151,16 +155,23 @@ export default function GardensScreen() {
       void queryClient.invalidateQueries({ queryKey: ['gardens'] });
       setSelectedGardenId(null);
     },
+    onError: (err) => {
+      Alert.alert('Помилка', formatApiError(err, 'Не вдалося видалити сад'));
+    },
   });
 
   const createZoneMutation = useMutation({
-    mutationFn: () =>
-      api.createZone(activeGardenId!, {
+    mutationFn: () => {
+      if (!activeGardenId) {
+        throw new Error('Спочатку виберіть або створіть сад');
+      }
+      return api.createZone(activeGardenId, {
         name: zoneName.trim(),
         type: zoneType,
         width: zoneWidth ? Number(zoneWidth) : undefined,
         height: zoneHeight ? Number(zoneHeight) : undefined,
-      }),
+      });
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['zones', activeGardenId] });
       setAddZoneOpen(false);
@@ -188,10 +199,11 @@ export default function GardensScreen() {
       });
       return { previousZones };
     },
-    onError: (_err, _zoneId, context) => {
+    onError: (err, _zoneId, context) => {
       if (context?.previousZones) {
         queryClient.setQueryData(['zones', activeGardenId], context.previousZones);
       }
+      Alert.alert('Помилка', formatApiError(err, 'Не вдалося видалити зону'));
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ['zones', activeGardenId] });
@@ -221,6 +233,9 @@ export default function GardensScreen() {
       setPlantTypeId('');
       setPlantQuantity('1');
     },
+    onError: (err) => {
+      Alert.alert('Помилка', formatApiError(err, 'Не вдалося посадити рослину'));
+    },
   });
 
   const deletePlantMutation = useMutation({
@@ -237,10 +252,11 @@ export default function GardensScreen() {
       });
       return { previousPlants };
     },
-    onError: (_err, _plantId, context) => {
+    onError: (err, _plantId, context) => {
       if (context?.previousPlants) {
         queryClient.setQueryData(['plants', 'all'], context.previousPlants);
       }
+      Alert.alert('Помилка', formatApiError(err, 'Не вдалося видалити рослину'));
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ['plants'] });
@@ -268,6 +284,9 @@ export default function GardensScreen() {
       setHarvestQty('');
       setHarvestNotes('');
     },
+    onError: (err) => {
+      Alert.alert('Помилка', formatApiError(err, 'Не вдалося зафіксувати урожай'));
+    },
   });
 
   const createCareMutation = useMutation({
@@ -285,6 +304,9 @@ export default function GardensScreen() {
       void queryClient.invalidateQueries({ queryKey: ['plants'] });
       setCarePlant(null);
       setCareNotes('');
+    },
+    onError: (err) => {
+      Alert.alert('Помилка', formatApiError(err, 'Не вдалося зафіксувати догляд'));
     },
   });
 
@@ -503,6 +525,16 @@ export default function GardensScreen() {
                 Завантаження зон…
               </Text>
             </View>
+          ) : (gardensQuery.isError && !gardensQuery.data) || (zonesQuery.isError && !zonesQuery.data) ? (
+            <QueryErrorCard
+              error={zonesQuery.error ?? gardensQuery.error}
+              fallbackMessage="Не вдалося завантажити сади та зони"
+              onRetry={() => {
+                void gardensQuery.refetch();
+                if (activeGardenId) void zonesQuery.refetch();
+                void plantsQuery.refetch();
+              }}
+            />
           ) : (
             <View style={[styles.emptyCard, { backgroundColor: theme.pn, borderColor: theme.bd }]}>
               <Map size={40} color={theme.mu} />

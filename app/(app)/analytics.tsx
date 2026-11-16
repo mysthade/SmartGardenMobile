@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { QueryErrorCard } from '@/src/components/QueryErrorCard';
 import { api } from '@/src/lib/api';
 import { useTheme } from '@/src/theme/theme-context';
 import { type ThemeTokens } from '@/src/theme/tokens';
@@ -55,6 +56,17 @@ export default function AnalyticsScreen() {
         <Text style={[styles.screenTitle, { color: theme.tx }]}>Аналітика саду</Text>
         <View style={{ width: 40 }} />
       </View>
+
+      {(summaryQuery.isError && !data) || (harvestsQuery.isError && !harvestsQuery.data) ? (
+        <QueryErrorCard
+          error={summaryQuery.error ?? harvestsQuery.error}
+          fallbackMessage="Не вдалося завантажити аналітику саду"
+          onRetry={() => {
+            void summaryQuery.refetch();
+            void harvestsQuery.refetch();
+          }}
+        />
+      ) : null}
 
       {/* Harvest Shortcut Banner */}
       <Pressable

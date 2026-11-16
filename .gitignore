@@ -32,7 +32,10 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
 .env*.local
+server/.env
+server/dist/
 
 # typescript
 *.tsbuildinfo

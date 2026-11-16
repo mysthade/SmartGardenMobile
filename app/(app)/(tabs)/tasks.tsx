@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Pressable,
   RefreshControl,
@@ -10,7 +11,9 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { QueryErrorCard } from '@/src/components/QueryErrorCard';
 import { api } from '@/src/lib/api';
+import { formatApiError } from '@/src/lib/api-errors';
 import { useTheme } from '@/src/theme/theme-context';
 import { type ThemeTokens } from '@/src/theme/tokens';
 import {
@@ -57,10 +60,11 @@ export default function TasksScreen() {
       });
       return { previousTasks };
     },
-    onError: (_err, _taskId, context) => {
+    onError: (err, _taskId, context) => {
       if (context?.previousTasks) {
         queryClient.setQueryData(['tasks', 'list'], context.previousTasks);
       }
+      Alert.alert('Помилка', formatApiError(err, 'Не вдалося оновити завдання'));
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ['tasks'] });
@@ -147,6 +151,12 @@ export default function TasksScreen() {
                 Завантаження завдань…
               </Text>
             </View>
+          ) : tasksQuery.isError && !tasksQuery.data ? (
+            <QueryErrorCard
+              error={tasksQuery.error}
+              fallbackMessage="Не вдалося завантажити завдання"
+              onRetry={() => void tasksQuery.refetch()}
+            />
           ) : (
             <View style={[styles.emptyCard, { backgroundColor: theme.pn, borderColor: theme.bd }]}>
               <Sparkles size={36} color={theme.ac} />

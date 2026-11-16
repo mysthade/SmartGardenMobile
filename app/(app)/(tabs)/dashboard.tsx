@@ -22,6 +22,7 @@ import {
 import { useWeather } from '@/src/features/weather/hooks/use-weather';
 import { getWeatherCodeInfo } from '@/src/features/weather/lib/weather-codes';
 import { formatTemperature } from '@/src/features/weather/lib/weather-units';
+import { QueryErrorCard } from '@/src/components/QueryErrorCard';
 
 export default function DashboardScreen() {
   const { user } = useAuth();
@@ -41,11 +42,23 @@ export default function DashboardScreen() {
 
   const data = summary.data;
   const firstName = user?.name?.split(/\s+/)[0] ?? 'садівнику';
-  const { weather, settings } = useWeather();
+  const { weather, settings, isOnline } = useWeather();
 
-  const weatherTemp = weather ? formatTemperature(weather.current.temperature, settings.tempUnit) : '+21°C';
-  const weatherCondition = weather ? getWeatherCodeInfo(weather.current.weatherCode, weather.current.isDay).label : 'Сонячно';
-  const weatherAdvice = weather?.agroTips?.[0]?.description ?? 'Сприятливий день для догляду за грядками та поливу ввечері.';
+  const weatherTemp = weather
+    ? formatTemperature(weather.current.temperature, settings.tempUnit)
+    : isOnline
+      ? '—'
+      : 'Офлайн';
+  const weatherCondition = weather
+    ? getWeatherCodeInfo(weather.current.weatherCode, weather.current.isDay).label
+    : isOnline
+      ? 'Завантаження'
+      : 'Немає даних';
+  const weatherAdvice =
+    weather?.agroTips?.[0]?.description ??
+    (isOnline
+      ? 'Натисніть, щоб відкрити детальний прогноз погоди та агро-поради.'
+      : 'Прогноз погоди буде доступний після відновлення інтернету.');
 
   return (
     <ScrollView
@@ -68,7 +81,7 @@ export default function DashboardScreen() {
         <View>
           <Text style={[styles.greeting, { color: theme.tx }]}>Привіт, {firstName} 👋</Text>
           <Text style={[styles.subtitle, { color: theme.mu }]}>
-            Ваш сад — актуальні дані з веб-версії
+            Ваш сад — планування, догляд та облік врожаю
           </Text>
         </View>
       </View>
@@ -184,6 +197,15 @@ export default function DashboardScreen() {
         <View style={[styles.card, { backgroundColor: theme.pn, borderColor: theme.bd }]}>
           <Text style={[styles.muted, { color: theme.mu }]}>Завантаження садів…</Text>
         </View>
+      ) : gardens.isError && !gardens.data ? (
+        <QueryErrorCard
+          error={gardens.error}
+          fallbackMessage="Не вдалося завантажити список садів"
+          onRetry={() => {
+            void summary.refetch();
+            void gardens.refetch();
+          }}
+        />
       ) : (gardens.data?.data.length ?? 0) === 0 ? (
         <View style={[styles.card, { backgroundColor: theme.pn, borderColor: theme.bd }]}>
           <Text style={[styles.muted, { color: theme.mu }]}>

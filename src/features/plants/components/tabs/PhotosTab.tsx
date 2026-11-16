@@ -14,8 +14,9 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Camera, Plus, Trash2, X, Image as ImageIcon } from 'lucide-react-native';
+import { Camera, Check, Plus, Trash2, X, Image as ImageIcon } from 'lucide-react-native';
 import type { AttachmentDto } from '@smart-garden/types';
+import { QueryErrorCard } from '@/src/components/QueryErrorCard';
 import { api, newIdempotencyKey, ApiClientError } from '@/src/lib/api';
 import type { ThemeTokens } from '@/src/theme/tokens';
 
@@ -32,9 +33,11 @@ function PhotosTabInner({ plantId, theme }: PhotosTabProps) {
   const {
     data: attachments = [],
     isLoading,
+    isError,
+    error,
     isRefetching,
     refetch,
-  } = useQuery({
+  } = useQuery<AttachmentDto[]>({
     queryKey: ['plant-attachments', plantId],
     queryFn: () => api.listPlantAttachments(plantId),
     staleTime: 30_000,
@@ -173,6 +176,18 @@ function PhotosTabInner({ plantId, theme }: PhotosTabProps) {
       <View style={[styles.loadingCenter, { backgroundColor: theme.bg }]}>
         <ActivityIndicator size="large" color={theme.ac} />
         <Text style={[styles.loadingText, { color: theme.mu }]}>Завантаження фотографій...</Text>
+      </View>
+    );
+  }
+
+  if (isError) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.bg, paddingHorizontal: 16 }]}>
+        <QueryErrorCard
+          error={error}
+          fallbackMessage="Не вдалося завантажити фотографії"
+          onRetry={() => void refetch()}
+        />
       </View>
     );
   }
