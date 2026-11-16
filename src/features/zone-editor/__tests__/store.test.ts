@@ -187,4 +187,64 @@ describe('hydrate — рослини з вебу без позиції', () => {
   });
 });
 
+describe('commitPlantPosition — крайні верхні та нижні рядки сітки', () => {
+  it('дозволяє ставити рослину у верхні та нижні 2 рядки грядки BED (5x5m)', () => {
+    const bed5x5 = {
+      zone: {
+        id: 'z-5x5',
+        gardenId: 'g1',
+        name: 'Грядка',
+        type: 'BED' as const,
+        width: '5',
+        height: '5',
+        settings: bedSettings,
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+      garden: { id: 'g1', name: 'Сад' },
+      plants: [
+        {
+          id: 'p-edge',
+          zoneId: 'z-5x5',
+          plantTypeId: 't1',
+          name: 'Абрикос',
+          variety: null,
+          description: null,
+          quantity: 1,
+          positionX: '1.0',
+          positionY: '2.5',
+          size: '0.4',
+          rotation: '0',
+          plantedAt: null,
+          status: 'PLANNED' as const,
+          version: 1,
+          plantType: {
+            id: 't1',
+            name: 'Абрикос',
+            scientificName: '',
+            category: 'TREE' as const,
+            iconKey: null,
+          },
+          openProblemsCount: 0,
+        },
+      ],
+    };
+
+    useZoneEditorStore.getState().hydrate(bed5x5 as never);
+
+    // Верхні 2 рядки сітки (0..0.5м) не повинні відкидатись на 0.625м
+    useZoneEditorStore.getState().commitPlantPosition('p-edge', 1, 0.25);
+    expect(useZoneEditorStore.getState().plants['p-edge'].positionY).toBeCloseTo(0.25, 5);
+
+    useZoneEditorStore.getState().commitPlantPosition('p-edge', 1, 0.05);
+    expect(useZoneEditorStore.getState().plants['p-edge'].positionY).toBeLessThanOrEqual(0.25);
+
+    // Нижні 2 рядки сітки (4.5..5.0м) не повинні відкидатись на 4.375м
+    useZoneEditorStore.getState().commitPlantPosition('p-edge', 1, 4.75);
+    expect(useZoneEditorStore.getState().plants['p-edge'].positionY).toBeCloseTo(4.75, 5);
+
+    useZoneEditorStore.getState().commitPlantPosition('p-edge', 1, 4.95);
+    expect(useZoneEditorStore.getState().plants['p-edge'].positionY).toBeGreaterThanOrEqual(4.75);
+  });
+});
+
 
