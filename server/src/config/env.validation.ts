@@ -35,23 +35,18 @@ export const envSchema = z
       .union([z.boolean(), z.enum(['true', 'false'])])
       .transform((value) => value === true || value === 'true')
       .default(false),
-    S3_ENDPOINT: z.string().url(),
-    S3_REGION: z.string().min(1),
-    S3_BUCKET: z.string().min(1),
-    S3_ACCESS_KEY: z.string().min(1),
-    S3_SECRET_KEY: z.string().min(1),
+    S3_ENDPOINT: z.string().url().optional(),
+    S3_REGION: z.string().min(1).optional(),
+    S3_BUCKET: z.string().min(1).optional(),
+    S3_ACCESS_KEY: z.string().min(1).optional(),
+    S3_SECRET_KEY: z.string().min(1).optional(),
     S3_FORCE_PATH_STYLE: z
       .union([z.boolean(), z.enum(['true', 'false'])])
       .transform((value) => value === true || value === 'true')
       .default(true),
-    S3_PUBLIC_ENDPOINT: z.string().url().optional(),
     API_PORT: z.coerce.number().int().positive().default(3001),
     API_BODY_LIMIT: z.string().default('1mb'),
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
-    SEED_DEMO_USER: z
-      .union([z.boolean(), z.enum(['true', 'false'])])
-      .transform((value) => value === true || value === 'true')
-      .default(false),
     SWAGGER_ENABLED: z
       .union([z.boolean(), z.enum(['true', 'false'])])
       .transform((value) => value === true || value === 'true')
@@ -64,8 +59,8 @@ export const envSchema = z
         env.REFRESH_TOKEN_SECRET,
         env.COOKIE_SECRET,
         env.CSRF_SECRET,
-        env.S3_ACCESS_KEY,
-        env.S3_SECRET_KEY,
+        ...(env.S3_ACCESS_KEY ? [env.S3_ACCESS_KEY] : []),
+        ...(env.S3_SECRET_KEY ? [env.S3_SECRET_KEY] : []),
       ];
       for (const secret of secrets) {
         if (DEFAULT_DEV_SECRETS.has(secret)) {

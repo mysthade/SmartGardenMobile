@@ -16,7 +16,7 @@ import type { AppEnv } from '../config/env.validation';
 @Injectable()
 export class StorageService {
   private readonly logger = new Logger(StorageService.name);
-  private readonly client: S3Client;
+  private readonly client: S3Client | null;
   private readonly bucket: string;
   private readonly forcePathStyle: boolean;
   private readonly apiUrl: string;
@@ -25,20 +25,28 @@ export class StorageService {
   private useLocalFallback: boolean | null = null;
 
   constructor(config: ConfigService<AppEnv, true>) {
-    this.bucket = config.get('S3_BUCKET', { infer: true });
+    this.bucket = config.get('S3_BUCKET', { infer: true }) ?? 'smart-garden';
     this.forcePathStyle = config.get('S3_FORCE_PATH_STYLE', { infer: true });
     this.apiUrl = config.get('API_URL', { infer: true }).replace(/\/$/, '');
     this.signingSecret = config.get('ACCESS_TOKEN_SECRET', { infer: true });
     this.localRoot = path.resolve(process.cwd(), 'uploads');
-    this.client = new S3Client({
-      region: config.get('S3_REGION', { infer: true }),
-      endpoint: config.get('S3_ENDPOINT', { infer: true }),
-      forcePathStyle: this.forcePathStyle,
-      credentials: {
-        accessKeyId: config.get('S3_ACCESS_KEY', { infer: true }),
-        secretAccessKey: config.get('S3_SECRET_KEY', { infer: true }),
-      },
-    });
+
+    const endpoint = config.get('S3_ENDPOINT', { infer: true });
+    const region = config.get('S3_REGION', { infer: true });
+    const accessKeyId = config.get('S3_ACCESS_KEY', { infer: true });
+    const secretAccessKey = config.get('S3_SECRET_KEY', { infer: true });
+
+    if (endpoint && region && accessKeyId && secretAccessKey) {
+      this.client = new S3Client({
+        region,
+        endpoint,
+        forcePathStyle: this.forcePathStyle,
+        credentials: { accessKeyId, secretAccessKey },
+      });
+    } else {
+      this.client = null;
+      this.useLocalFallback = true;
+    }
   }
 
   buildObjectKey(ownerId: string, extension: string): string {
@@ -47,7 +55,7 @@ export class StorageService {
   }
 
   async createUploadUrl(key: string, mimeType: string, expiresInSeconds = 900): Promise<string> {
-    if (await this.shouldUseLocal()) {
+    if (await this.shouldUseLocal() || !this.client) {
       const exp = Math.floor(Date.now() / 1000) + expiresInSeconds;
       const sig = this.sign('upload', key, exp);
       return `${this.apiUrl}/api/v1/storage/upload?key=${encodeURIComponent(key)}&exp=${exp}&sig=${sig}`;
@@ -62,7 +70,7 @@ export class StorageService {
   }
 
   async createDownloadUrl(key: string, expiresInSeconds = 900): Promise<string> {
-    if (await this.shouldUseLocal()) {
+    if (await this.shouldUseLocal() || !this.client) {
       const exp = Math.floor(Date.now() / 1000) + expiresInSeconds;
       const sig = this.sign('download', key, exp);
       return `${this.apiUrl}/api/v1/storage/object?key=${encodeURIComponent(key)}&exp=${exp}&sig=${sig}`;
@@ -76,7 +84,7 @@ export class StorageService {
   }
 
   async getObjectBuffer(key: string): Promise<Buffer> {
-    if (await this.shouldUseLocal()) {
+    if (await this.shouldUseLocal() || !this.client) {
       return fs.readFile(this.resolveLocalPath(key));
     }
 
@@ -93,7 +101,7 @@ export class StorageService {
   }
 
   async putObject(key: string, body: Buffer, mimeType: string): Promise<void> {
-    if (await this.shouldUseLocal()) {
+    if (await this.shouldUseLocal() || !this.client) {
       await this.writeLocalObject(key, body);
       return;
     }
@@ -115,7 +123,7 @@ export class StorageService {
   }
 
   async deleteObject(key: string): Promise<void> {
-    if (await this.shouldUseLocal()) {
+    if (await this.shouldUseLocal() || !this.client) {
       try {
         await fs.rm(this.resolveLocalPath(key), { force: true });
       } catch (error) {
@@ -191,6 +199,9 @@ export class StorageService {
   }
 
   private async probeS3(): Promise<boolean> {
+    if (!this.client) {
+      return false;
+    }
     try {
       await this.client.send(
         new GetObjectCommand({
