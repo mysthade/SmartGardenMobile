@@ -36,6 +36,7 @@ yarn-error.*
 .env*.local
 server/.env
 server/dist/
+server/uploads/
 
 # typescript
 *.tsbuildinfo

@@ -7,7 +7,9 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { randomUUID } from 'node:crypto';
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
 import { Readable } from 'node:stream';
 import type { AppEnv } from '../config/env.validation';
 
@@ -17,10 +19,17 @@ export class StorageService {
   private readonly client: S3Client;
   private readonly bucket: string;
   private readonly forcePathStyle: boolean;
+  private readonly apiUrl: string;
+  private readonly signingSecret: string;
+  private readonly localRoot: string;
+  private useLocalFallback: boolean | null = null;
 
   constructor(config: ConfigService<AppEnv, true>) {
     this.bucket = config.get('S3_BUCKET', { infer: true });
     this.forcePathStyle = config.get('S3_FORCE_PATH_STYLE', { infer: true });
+    this.apiUrl = config.get('API_URL', { infer: true }).replace(/\/$/, '');
+    this.signingSecret = config.get('ACCESS_TOKEN_SECRET', { infer: true });
+    this.localRoot = path.resolve(process.cwd(), 'uploads');
     this.client = new S3Client({
       region: config.get('S3_REGION', { infer: true }),
       endpoint: config.get('S3_ENDPOINT', { infer: true }),
@@ -38,6 +47,12 @@ export class StorageService {
   }
 
   async createUploadUrl(key: string, mimeType: string, expiresInSeconds = 900): Promise<string> {
+    if (await this.shouldUseLocal()) {
+      const exp = Math.floor(Date.now() / 1000) + expiresInSeconds;
+      const sig = this.sign('upload', key, exp);
+      return `${this.apiUrl}/api/v1/storage/upload?key=${encodeURIComponent(key)}&exp=${exp}&sig=${sig}`;
+    }
+
     const command = new PutObjectCommand({
       Bucket: this.bucket,
       Key: key,
@@ -47,6 +62,12 @@ export class StorageService {
   }
 
   async createDownloadUrl(key: string, expiresInSeconds = 900): Promise<string> {
+    if (await this.shouldUseLocal()) {
+      const exp = Math.floor(Date.now() / 1000) + expiresInSeconds;
+      const sig = this.sign('download', key, exp);
+      return `${this.apiUrl}/api/v1/storage/object?key=${encodeURIComponent(key)}&exp=${exp}&sig=${sig}`;
+    }
+
     const command = new GetObjectCommand({
       Bucket: this.bucket,
       Key: key,
@@ -55,6 +76,10 @@ export class StorageService {
   }
 
   async getObjectBuffer(key: string): Promise<Buffer> {
+    if (await this.shouldUseLocal()) {
+      return fs.readFile(this.resolveLocalPath(key));
+    }
+
     const result = await this.client.send(
       new GetObjectCommand({
         Bucket: this.bucket,
@@ -68,6 +93,11 @@ export class StorageService {
   }
 
   async putObject(key: string, body: Buffer, mimeType: string): Promise<void> {
+    if (await this.shouldUseLocal()) {
+      await this.writeLocalObject(key, body);
+      return;
+    }
+
     await this.client.send(
       new PutObjectCommand({
         Bucket: this.bucket,
@@ -78,7 +108,24 @@ export class StorageService {
     );
   }
 
+  async writeLocalObject(key: string, body: Buffer): Promise<void> {
+    const filePath = this.resolveLocalPath(key);
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(filePath, body);
+  }
+
   async deleteObject(key: string): Promise<void> {
+    if (await this.shouldUseLocal()) {
+      try {
+        await fs.rm(this.resolveLocalPath(key), { force: true });
+      } catch (error) {
+        this.logger.warn(
+          `Failed to delete local object ${key}: ${error instanceof Error ? error.message : 'unknown'}`,
+        );
+      }
+      return;
+    }
+
     try {
       await this.client.send(
         new DeleteObjectCommand({
@@ -94,8 +141,57 @@ export class StorageService {
   }
 
   async isHealthy(): Promise<boolean> {
+    if (await this.shouldUseLocal()) {
+      return true;
+    }
+    return this.probeS3();
+  }
+
+  verifySignedUrl(mode: 'upload' | 'download', key: string, expRaw: string, sig: string): boolean {
+    const exp = Number(expRaw);
+    if (!key || !sig || !Number.isFinite(exp) || exp < Math.floor(Date.now() / 1000)) {
+      return false;
+    }
+    const expected = this.sign(mode, key, exp);
+    const a = Buffer.from(sig, 'utf8');
+    const b = Buffer.from(expected, 'utf8');
+    return a.length === b.length && timingSafeEqual(a, b);
+  }
+
+  private sign(mode: 'upload' | 'download', key: string, exp: number): string {
+    return createHmac('sha256', this.signingSecret)
+      .update(`${mode}:${key}:${exp}`)
+      .digest('hex');
+  }
+
+  private resolveLocalPath(key: string): string {
+    const cleaned = key.replace(/^\/+/, '');
+    const resolved = path.resolve(this.localRoot, cleaned);
+    if (!resolved.startsWith(this.localRoot + path.sep)) {
+      throw new Error(`Invalid storage key: ${key}`);
+    }
+    return resolved;
+  }
+
+  private async shouldUseLocal(): Promise<boolean> {
+    if (process.env.STORAGE_DRIVER === 'local') {
+      return true;
+    }
+    if (this.useLocalFallback !== null) {
+      return this.useLocalFallback;
+    }
+    const healthy = await this.probeS3();
+    this.useLocalFallback = !healthy;
+    if (this.useLocalFallback) {
+      this.logger.warn(
+        `S3/MinIO недоступний — вкладення зберігаються локально в ${this.localRoot}`,
+      );
+    }
+    return this.useLocalFallback;
+  }
+
+  private async probeS3(): Promise<boolean> {
     try {
-      // Lightweight check: HeadBucket would need extra permission; list with max 1 is fine for MinIO.
       await this.client.send(
         new GetObjectCommand({
           Bucket: this.bucket,
@@ -105,7 +201,6 @@ export class StorageService {
       return true;
     } catch (error) {
       const name = error instanceof Error ? error.name : '';
-      // Missing key means bucket reachable.
       return name === 'NoSuchKey' || name === 'NotFound';
     }
   }
