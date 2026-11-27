@@ -296,6 +296,7 @@ export class AuthService {
       where: { userId, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+    await this.recordAudit(userId, 'AUTH_LOGOUT_ALL', 'User', userId);
     this.clearAuthCookies(res);
     return { message: 'Усі сесії завершено' };
   }
@@ -365,6 +366,10 @@ export class AuthService {
       }),
     ]);
 
+    await this.recordAudit(record.userId, 'AUTH_PASSWORD_RESET', 'User', record.userId, {
+      ip: meta?.ip ?? null,
+    });
+
     return { message: 'Пароль оновлено. Увійдіть знову' };
   }
 
@@ -401,6 +406,8 @@ export class AuthService {
         data: { revokedAt: new Date() },
       }),
     ]);
+
+    await this.recordAudit(userId, 'AUTH_PASSWORD_CHANGED', 'User', userId);
 
     return { message: 'Пароль змінено' };
   }
@@ -529,5 +536,27 @@ export class AuthService {
       createdAt: session.createdAt.toISOString(),
       current: session.id === currentSessionId,
     };
+  }
+
+  private async recordAudit(
+    userId: string | null,
+    action: string,
+    entityType: string,
+    entityId?: string | null,
+    metadata?: Record<string, string | null>,
+  ): Promise<void> {
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          userId,
+          action,
+          entityType,
+          entityId: entityId ?? null,
+          ...(metadata ? { metadata } : {}),
+        },
+      });
+    } catch {
+      // Audit logging must not break primary auth flows.
+    }
   }
 }

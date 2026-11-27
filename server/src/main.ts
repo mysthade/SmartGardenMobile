@@ -50,6 +50,10 @@ async function bootstrap(): Promise<void> {
       hsts: isProd ? { maxAge: 31536000, includeSubDomains: true, preload: true } : false,
     }),
   );
+  app.use((_req: unknown, res: { setHeader: (k: string, v: string) => void }, next: () => void) => {
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    next();
+  });
   app.use(cookieParser(config.get('COOKIE_SECRET', { infer: true })));
 
   app.enableCors({

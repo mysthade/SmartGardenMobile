@@ -56,5 +56,11 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "jest"
   },
+  "pnpm": {
+    "overrides": {
+      "shell-quote": ">=1.11.0",
+      "node-forge": ">=1.4.3"
+    }
+  },
   "private": true
 }

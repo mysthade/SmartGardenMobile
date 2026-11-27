@@ -50,7 +50,7 @@ services:
       - key: SMTP_SECURE
         value: false
       - key: SWAGGER_ENABLED
-        value: true
+        value: false
       - key: AUTO_VERIFY_EMAIL
-        value: true
+        value: false
 
