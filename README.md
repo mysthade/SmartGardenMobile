@@ -116,3 +116,4 @@ npm run lint
 # Збірка бекенду
 pnpm --filter @smart-garden/api build
 ```
+
