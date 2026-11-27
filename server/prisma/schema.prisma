@@ -1,0 +1,565 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ZoneType {
+  BED
+  GREENHOUSE
+  ORCHARD
+  FLOWERBED
+  FIELD
+  OTHER
+}
+
+enum PlanObjectType {
+  HOUSE
+  SHED
+  GAZEBO
+  BBQ
+  GREENHOUSE
+  GARAGE
+  WELL
+  BOREHOLE
+  COMPOSTER
+  POND
+  POOL
+  FENCE
+  GATE
+  PATH
+  TREE
+  BUSH
+  FLOWERBED
+  RAISED_BED
+  LAWN
+  PARKING
+  TOILET
+  CUSTOM
+}
+
+enum PlanObjectLayer {
+  BUILDINGS
+  UTILITIES
+  PLANTS
+  PATHS
+  OTHER
+}
+
+enum PlantStatus {
+  PLANNED
+  PLANTED
+  GROWING
+  FLOWERING
+  FRUITING
+  HARVESTING
+  FINISHED
+  HAS_PROBLEM
+}
+
+enum JournalEntryType {
+  OBSERVATION
+  GROWTH
+  FLOWERING
+  FRUITING
+  NOTE
+  OTHER
+}
+
+enum HarvestUnit {
+  GRAM
+  KILOGRAM
+  PIECE
+  LITER
+}
+
+enum HarvestQuality {
+  EXCELLENT
+  GOOD
+  AVERAGE
+  POOR
+}
+
+enum ProblemSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ProblemStatus {
+  DETECTED
+  MONITORING
+  TREATING
+  RESOLVED
+}
+
+enum CareActivityType {
+  WATERING
+  FERTILIZING
+  PRUNING
+  TRANSPLANTING
+  PEST_TREATMENT
+  TYING
+  SOIL_TREATMENT
+  OTHER
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+enum AttachmentStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+}
+
+enum WeightUnit {
+  GRAM
+  KILOGRAM
+}
+
+enum AreaUnit {
+  SQUARE_METER
+  HECTARE
+}
+
+enum PlantTypeCategory {
+  VEGETABLE
+  FRUIT
+  BERRY
+  HERB
+  FLOWER
+  TREE
+  SHRUB
+  OTHER
+}
+
+model User {
+  id                   String    @id @default(uuid()) @db.Uuid
+  name                 String    @db.VarChar(120)
+  email                String    @db.VarChar(254)
+  normalizedEmail      String    @unique @db.VarChar(254)
+  passwordHash         String
+  avatarUrl            String?
+  emailVerifiedAt      DateTime?
+  preferredLanguage    String    @default("uk") @db.VarChar(10)
+  preferredWeightUnit  WeightUnit @default(KILOGRAM)
+  preferredAreaUnit    AreaUnit   @default(SQUARE_METER)
+  timezone             String    @default("Europe/Kyiv") @db.VarChar(64)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  deletedAt            DateTime?
+
+  sessions                 Session[]
+  emailVerificationTokens  EmailVerificationToken[]
+  passwordResetTokens      PasswordResetToken[]
+  gardens                  Garden[]
+  plantTypes               PlantType[]
+  journalEntries           PlantJournalEntry[]
+  tasks                    Task[]
+  attachments              Attachment[]
+  auditLogs                AuditLog[]
+  idempotencyKeys          IdempotencyKey[]
+
+  @@index([deletedAt])
+}
+
+model Session {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @db.Uuid
+  refreshTokenHash String
+  tokenFamily      String    @db.Uuid
+  deviceName       String?   @db.VarChar(120)
+  ipHash           String?   @db.VarChar(128)
+  userAgent        String?   @db.VarChar(512)
+  lastUsedAt       DateTime  @default(now())
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt, expiresAt])
+  @@index([refreshTokenHash])
+  @@index([tokenFamily])
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+}
+
+model Garden {
+  id           String    @id @default(uuid()) @db.Uuid
+  ownerId      String    @db.Uuid
+  name         String    @db.VarChar(120)
+  description  String?   @db.VarChar(2000)
+  locationName String?   @db.VarChar(200)
+  latitude     Decimal?  @db.Decimal(9, 6)
+  longitude    Decimal?  @db.Decimal(9, 6)
+  area         Decimal?  @db.Decimal(12, 2)
+  mapWidth     Decimal?  @db.Decimal(12, 4)
+  mapHeight    Decimal?  @db.Decimal(12, 4)
+  imageUrl     String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  owner     User             @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  zones     GardenZone[]
+  plans     GardenPlan[]
+  tasks     Task[]
+
+  @@index([ownerId, deletedAt])
+}
+
+model GardenPlan {
+  id            String       @id @default(uuid()) @db.Uuid
+  gardenId      String       @db.Uuid
+  name          String       @default("Основний план") @db.VarChar(120)
+  widthCm       Float
+  heightCm      Float
+  boundary      Json?
+  northAngleDeg Float        @default(0)
+  gridSizeCm    Float        @default(50)
+  version       Int          @default(1)
+  isActive      Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  deletedAt     DateTime?
+
+  garden        Garden       @relation(fields: [gardenId], references: [id], onDelete: Cascade)
+  objects       PlanObject[]
+
+  @@index([gardenId, deletedAt])
+  @@index([gardenId, isActive])
+}
+
+model PlanObject {
+  id          String          @id @default(uuid()) @db.Uuid
+  planId      String          @db.Uuid
+  type        PlanObjectType
+  label       String          @db.VarChar(120)
+  xCm         Float
+  yCm         Float
+  widthCm     Float
+  heightCm    Float
+  rotationDeg Float           @default(0)
+  zIndex      Int             @default(0)
+  layer       PlanObjectLayer @default(OTHER)
+  color       String?         @db.VarChar(32)
+  locked      Boolean         @default(false)
+  meta        Json?
+  zoneId      String?         @db.Uuid
+  plantId     String?         @db.Uuid
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  deletedAt   DateTime?
+
+  plan        GardenPlan      @relation(fields: [planId], references: [id], onDelete: Cascade)
+  zone        GardenZone?     @relation(fields: [zoneId], references: [id], onDelete: SetNull)
+  plant       Plant?          @relation(fields: [plantId], references: [id], onDelete: SetNull)
+
+  @@index([planId, deletedAt])
+  @@index([zoneId])
+  @@index([plantId])
+}
+
+
+model GardenZone {
+  id          String    @id @default(uuid()) @db.Uuid
+  gardenId    String    @db.Uuid
+  name        String    @db.VarChar(120)
+  type        ZoneType  @default(BED)
+  description String?   @db.VarChar(2000)
+  area        Decimal?  @db.Decimal(12, 2)
+  positionX   Decimal?  @db.Decimal(12, 4)
+  positionY   Decimal?  @db.Decimal(12, 4)
+  width       Decimal?  @db.Decimal(12, 4)
+  height      Decimal?  @db.Decimal(12, 4)
+  color       String?   @db.VarChar(32)
+  imageUrl    String?
+  settings    Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  garden Garden  @relation(fields: [gardenId], references: [id], onDelete: Cascade)
+  plants Plant[]
+  tasks  Task[]
+  planObjects PlanObject[]
+
+  @@index([gardenId, deletedAt])
+}
+
+model PlantType {
+  id                         String            @id @default(uuid()) @db.Uuid
+  name                       String            @db.VarChar(120)
+  scientificName             String?           @db.VarChar(200)
+  description                String?           @db.VarChar(2000)
+  defaultImageUrl            String?
+  category                   PlantTypeCategory @default(OTHER)
+  ownerId                    String?           @db.Uuid
+  iconKey                    String?           @db.VarChar(64)
+  recommendedMinMoisture     Int?
+  recommendedMaxMoisture     Int?
+  recommendedTemperatureMin  Decimal?          @db.Decimal(5, 2)
+  recommendedTemperatureMax  Decimal?          @db.Decimal(5, 2)
+  typicalGrowingDays         Int?
+  createdAt                  DateTime          @default(now())
+  updatedAt                  DateTime          @updatedAt
+
+  owner  User?   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  plants Plant[]
+
+  @@index([name])
+  @@index([category])
+  @@index([ownerId])
+}
+
+model Plant {
+  id                String      @id @default(uuid()) @db.Uuid
+  zoneId            String      @db.Uuid
+  plantTypeId       String      @db.Uuid
+  name              String      @db.VarChar(120)
+  variety           String?     @db.VarChar(120)
+  description       String?     @db.VarChar(2000)
+  quantity          Int         @default(1)
+  occupiedArea      Decimal?    @db.Decimal(12, 2)
+  positionX         Decimal?    @db.Decimal(12, 4)
+  positionY         Decimal?    @db.Decimal(12, 4)
+  size              Decimal?    @db.Decimal(8, 4)
+  rotation          Decimal?    @db.Decimal(8, 2)
+  plantedAt         DateTime?
+  expectedHarvestAt DateTime?
+  finishedAt        DateTime?
+  status            PlantStatus @default(PLANNED)
+  mainImageUrl      String?
+  version           Int         @default(1)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  deletedAt         DateTime?
+
+  zone       GardenZone          @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  plantType  PlantType           @relation(fields: [plantTypeId], references: [id], onDelete: Restrict)
+  journal    PlantJournalEntry[]
+  harvests   Harvest[]
+  problems   PlantProblem[]
+  activities CareActivity[]
+  tasks      Task[]
+  attachments Attachment[]
+  planObjects PlanObject[]
+
+  @@index([zoneId, deletedAt])
+  @@index([plantTypeId])
+  @@index([status])
+  @@index([name])
+  @@index([updatedAt])
+}
+
+model PlantJournalEntry {
+  id             String           @id @default(uuid()) @db.Uuid
+  plantId        String           @db.Uuid
+  authorId       String           @db.Uuid
+  type           JournalEntryType @default(OBSERVATION)
+  title          String           @db.VarChar(200)
+  description    String?          @db.VarChar(5000)
+  conditionScore Int?
+  height         Decimal?         @db.Decimal(10, 2)
+  heightUnit     String?          @db.VarChar(16)
+  observedAt     DateTime
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  plant       Plant        @relation(fields: [plantId], references: [id], onDelete: Cascade)
+  author      User         @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  attachments Attachment[]
+
+  @@index([plantId, observedAt])
+  @@index([authorId])
+}
+
+model Harvest {
+  id              String         @id @default(uuid()) @db.Uuid
+  plantId         String         @db.Uuid
+  harvestedAt     DateTime
+  quantity        Decimal        @db.Decimal(14, 3)
+  unit            HarvestUnit
+  damagedQuantity Decimal?       @db.Decimal(14, 3)
+  quality         HarvestQuality @default(GOOD)
+  notes           String?        @db.VarChar(2000)
+  quantityGrams   Decimal?       @db.Decimal(14, 3)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  plant       Plant        @relation(fields: [plantId], references: [id], onDelete: Cascade)
+  attachments Attachment[]
+
+  @@index([plantId, harvestedAt])
+}
+
+model PlantProblem {
+  id             String          @id @default(uuid()) @db.Uuid
+  plantId        String          @db.Uuid
+  title          String          @db.VarChar(200)
+  description    String?         @db.VarChar(5000)
+  suspectedCause String?         @db.VarChar(500)
+  severity       ProblemSeverity @default(MEDIUM)
+  status         ProblemStatus   @default(DETECTED)
+  detectedAt     DateTime
+  resolvedAt     DateTime?
+  solution       String?         @db.VarChar(5000)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  plant       Plant        @relation(fields: [plantId], references: [id], onDelete: Cascade)
+  attachments Attachment[]
+
+  @@index([plantId, status, severity])
+}
+
+model CareActivity {
+  id          String           @id @default(uuid()) @db.Uuid
+  plantId     String           @db.Uuid
+  type        CareActivityType
+  performedAt DateTime
+  quantity    Decimal?         @db.Decimal(14, 3)
+  unit        String?          @db.VarChar(32)
+  productName String?          @db.VarChar(200)
+  notes       String?          @db.VarChar(2000)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  plant Plant @relation(fields: [plantId], references: [id], onDelete: Cascade)
+
+  @@index([plantId, performedAt])
+}
+
+model Task {
+  id          String       @id @default(uuid()) @db.Uuid
+  userId      String       @db.Uuid
+  gardenId    String?      @db.Uuid
+  zoneId      String?      @db.Uuid
+  plantId     String?      @db.Uuid
+  title       String       @db.VarChar(200)
+  description String?      @db.VarChar(5000)
+  dueAt       DateTime?
+  priority    TaskPriority @default(MEDIUM)
+  status      TaskStatus   @default(TODO)
+  completedAt DateTime?
+  reminderAt  DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  deletedAt   DateTime?
+
+  user   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  garden Garden?     @relation(fields: [gardenId], references: [id], onDelete: SetNull)
+  zone   GardenZone? @relation(fields: [zoneId], references: [id], onDelete: SetNull)
+  plant  Plant?      @relation(fields: [plantId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status, dueAt])
+  @@index([userId, deletedAt, createdAt])
+  @@index([gardenId])
+  @@index([zoneId])
+  @@index([plantId])
+}
+
+model Attachment {
+  id               String           @id @default(uuid()) @db.Uuid
+  ownerId          String           @db.Uuid
+  plantId          String?          @db.Uuid
+  journalEntryId   String?          @db.Uuid
+  problemId        String?          @db.Uuid
+  harvestId        String?          @db.Uuid
+  storageKey       String
+  thumbnailKey     String?
+  originalFileName String           @db.VarChar(255)
+  mimeType         String           @db.VarChar(100)
+  size             Int
+  width            Int?
+  height           Int?
+  status           AttachmentStatus @default(PENDING)
+  createdAt        DateTime         @default(now())
+  deletedAt        DateTime?
+
+  owner        User               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  plant        Plant?             @relation(fields: [plantId], references: [id], onDelete: SetNull)
+  journalEntry PlantJournalEntry? @relation(fields: [journalEntryId], references: [id], onDelete: SetNull)
+  problem      PlantProblem?      @relation(fields: [problemId], references: [id], onDelete: SetNull)
+  harvest      Harvest?           @relation(fields: [harvestId], references: [id], onDelete: SetNull)
+
+  @@index([ownerId, deletedAt])
+  @@index([plantId])
+  @@index([status, createdAt])
+  @@unique([storageKey])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String?  @db.Uuid
+  action     String   @db.VarChar(100)
+  entityType String   @db.VarChar(100)
+  entityId   String?  @db.Uuid
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([entityType, entityId])
+}
+
+model IdempotencyKey {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @db.Uuid
+  key          String   @db.VarChar(128)
+  route        String   @db.VarChar(255)
+  requestHash  String   @db.VarChar(128)
+  statusCode   Int?
+  responseBody Json?
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@index([expiresAt])
+}

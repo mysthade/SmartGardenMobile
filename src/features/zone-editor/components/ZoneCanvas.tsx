@@ -168,7 +168,7 @@ export function ZoneCanvas({ theme }: { theme: CanvasTheme }) {
               {hasValidSelectedCoords ? (
                 (() => {
                   const selSize = Number.isFinite(selectedPlant!.size) && selectedPlant!.size > 0 ? selectedPlant!.size : 0.4;
-                  const r = Math.max((selSize * pxPerMeter) / 2, MIN_MARKER_RADIUS_DP);
+                  const r = (selSize * pxPerMeter) / 2;
                   const selX = Math.min(
                     Math.max(originX + selectedPlant!.positionX * pxPerMeter, originX + r),
                     originX + zoneW - r,
@@ -205,16 +205,17 @@ export function ZoneCanvas({ theme }: { theme: CanvasTheme }) {
 
             {plants.map((plant) => {
               const plantSize = Number.isFinite(plant.size) && plant.size > 0 ? plant.size : 0.4;
-              const radius = Math.max((plantSize * pxPerMeter) / 2, MIN_MARKER_RADIUS_DP);
+              const physRadius = (plantSize * pxPerMeter) / 2;
+              const radius = Math.max(physRadius, MIN_MARKER_RADIUS_DP);
               const pX = Number.isFinite(plant.positionX) ? plant.positionX : safeZoneWidthM / 2;
               const pY = Number.isFinite(plant.positionY) ? plant.positionY : safeZoneHeightM / 2;
               const clampedX = Math.min(
-                Math.max(originX + pX * pxPerMeter, originX + radius),
-                originX + zoneW - radius,
+                Math.max(originX + pX * pxPerMeter, originX + physRadius),
+                originX + zoneW - physRadius,
               );
               const clampedY = Math.min(
-                Math.max(originY + pY * pxPerMeter, originY + radius),
-                originY + zoneH - radius,
+                Math.max(originY + pY * pxPerMeter, originY + physRadius),
+                originY + zoneH - physRadius,
               );
               const selected = selectedId === plant.id;
 

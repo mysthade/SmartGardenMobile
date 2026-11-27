@@ -14,10 +14,12 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Camera, Plus, Trash2, X, Image as ImageIcon } from 'lucide-react-native';
+import { Camera, Check, Plus, Trash2, X, Image as ImageIcon } from 'lucide-react-native';
 import type { AttachmentDto } from '@smart-garden/types';
-import { api, newIdempotencyKey, ApiClientError } from '@/src/lib/api';
+import { QueryErrorCard } from '@/src/components/QueryErrorCard';
+import { api, newIdempotencyKey, ApiClientError, resolveAssetUrl } from '@/src/lib/api';
 import type { ThemeTokens } from '@/src/theme/tokens';
+import { normalizeImageMimeType, readUriAsBlob } from '../../lib/photo-upload';
 
 interface PhotosTabProps {
   plantId: string;
@@ -32,9 +34,11 @@ function PhotosTabInner({ plantId, theme }: PhotosTabProps) {
   const {
     data: attachments = [],
     isLoading,
+    isError,
+    error,
     isRefetching,
     refetch,
-  } = useQuery({
+  } = useQuery<AttachmentDto[]>({
     queryKey: ['plant-attachments', plantId],
     queryFn: () => api.listPlantAttachments(plantId),
     staleTime: 30_000,
@@ -43,22 +47,21 @@ function PhotosTabInner({ plantId, theme }: PhotosTabProps) {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [source, setSource] = useState<'camera' | 'gallery' | null>(null);
   const [localPhotoUri, setLocalPhotoUri] = useState<string | null>(null);
+  const [localPhotoMime, setLocalPhotoMime] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
 
   const canAdd = attachments.length < MAX_PHOTOS_PER_PLANT;
 
   // Upload mutation (create presigned URL → PUT file → confirm)
   const uploadMutation = useMutation({
-    mutationFn: async (uri: string) => {
-      const response = await fetch(uri);
-      if (!response.ok) throw new Error('Не вдалося прочитати вибраний файл');
-      const blob = await response.blob();
+    mutationFn: async ({ uri, assetMimeType }: { uri: string; assetMimeType?: string | null }) => {
+      const blob = await readUriAsBlob(uri);
       const size = blob.size;
       const maxSize = 10 * 1024 * 1024;
       if (size > maxSize) {
         throw new Error('Файл занадто великий (максимум 10 МБ)');
       }
-      const mimeType = blob.type || 'image/jpeg';
+      const mimeType = normalizeImageMimeType(blob.type || assetMimeType, uri);
       const ext = mimeType === 'image/png' ? '.png' : mimeType === 'image/webp' ? '.webp' : '.jpg';
       const originalFileName = `roslina-${Date.now()}${ext}`;
 
@@ -67,16 +70,21 @@ function PhotosTabInner({ plantId, theme }: PhotosTabProps) {
         newIdempotencyKey('plant-photo')
       );
 
-      await fetch(uploadUrl, {
+      const resolvedUploadUrl = resolveAssetUrl(uploadUrl) ?? uploadUrl;
+      const putResponse = await fetch(resolvedUploadUrl, {
         method: 'PUT',
         body: blob,
         headers: { 'Content-Type': mimeType },
       });
+      if (!putResponse.ok) {
+        throw new Error('Не вдалося завантажити файл у сховище');
+      }
 
       await api.confirmAttachment(attachment.id);
     },
     onSuccess: async () => {
       setLocalPhotoUri(null);
+      setLocalPhotoMime(null);
       setSource(null);
       setIsAddModalOpen(false);
       setUploading(false);
@@ -118,6 +126,7 @@ function PhotosTabInner({ plantId, theme }: PhotosTabProps) {
       if (!result.canceled && result.assets[0]?.uri) {
         setSource('camera');
         setLocalPhotoUri(result.assets[0].uri);
+        setLocalPhotoMime(result.assets[0].mimeType ?? null);
       }
     } catch {
       Alert.alert('Помилка', 'Не вдалося зробити фото');
@@ -132,7 +141,7 @@ function PhotosTabInner({ plantId, theme }: PhotosTabProps) {
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.8,
@@ -140,6 +149,7 @@ function PhotosTabInner({ plantId, theme }: PhotosTabProps) {
       if (!result.canceled && result.assets[0]?.uri) {
         setSource('gallery');
         setLocalPhotoUri(result.assets[0].uri);
+        setLocalPhotoMime(result.assets[0].mimeType ?? null);
       }
     } catch {
       Alert.alert('Помилка', 'Не вдалося вибрати фото');
@@ -148,14 +158,15 @@ function PhotosTabInner({ plantId, theme }: PhotosTabProps) {
 
   const handleCancelPick = useCallback(() => {
     setLocalPhotoUri(null);
+    setLocalPhotoMime(null);
     setSource(null);
   }, []);
 
   const handleUploadPick = useCallback(() => {
     if (!localPhotoUri) return;
     setUploading(true);
-    void uploadMutation.mutate(localPhotoUri);
-  }, [localPhotoUri, uploadMutation]);
+    void uploadMutation.mutate({ uri: localPhotoUri, assetMimeType: localPhotoMime });
+  }, [localPhotoUri, localPhotoMime, uploadMutation]);
 
   const handleDeletePhoto = (attachmentId: string) => {
     Alert.alert(
@@ -173,6 +184,18 @@ function PhotosTabInner({ plantId, theme }: PhotosTabProps) {
       <View style={[styles.loadingCenter, { backgroundColor: theme.bg }]}>
         <ActivityIndicator size="large" color={theme.ac} />
         <Text style={[styles.loadingText, { color: theme.mu }]}>Завантаження фотографій...</Text>
+      </View>
+    );
+  }
+
+  if (isError) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.bg, paddingHorizontal: 16 }]}>
+        <QueryErrorCard
+          error={error}
+          fallbackMessage="Не вдалося завантажити фотографії"
+          onRetry={() => void refetch()}
+        />
       </View>
     );
   }
@@ -209,10 +232,12 @@ function PhotosTabInner({ plantId, theme }: PhotosTabProps) {
           }
         >
           <View style={styles.grid}>
-            {attachments.map((attachment) => (
+            {attachments.map((attachment) => {
+              const imageUri = resolveAssetUrl(attachment.thumbnailUrl ?? attachment.downloadUrl);
+              return (
               <View key={attachment.id} style={styles.photoCard}>
-                {attachment.downloadUrl ? (
-                  <Image source={{ uri: attachment.downloadUrl }} style={styles.photoImage} resizeMode="cover" />
+                {imageUri ? (
+                  <Image source={{ uri: imageUri }} style={styles.photoImage} resizeMode="cover" />
                 ) : (
                   <View style={[styles.photoPlaceholder, { backgroundColor: theme.bg }]}>
                     <ImageIcon size={28} color={theme.mu} />
@@ -229,7 +254,8 @@ function PhotosTabInner({ plantId, theme }: PhotosTabProps) {
                   {attachment.status === 'CONFIRMED' ? 'Завантажено' : attachment.status === 'PENDING' ? 'Завантажується...' : 'Помилка'}
                 </Text>
               </View>
-            ))}
+              );
+            })}
           </View>
           {canAdd ? (
             <Pressable onPress={() => setIsAddModalOpen(true)} style={styles.addBarBtn}>

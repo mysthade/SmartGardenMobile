@@ -250,10 +250,11 @@ export function placePoint(params: {
   zoneType: ZoneType;
   settings: ZoneSettingsInput;
   snap?: boolean;
+  snapToRows?: boolean;
   gridStepM?: number;
 }): MeterPoint {
   let point: MeterPoint = { x: params.x, y: params.y };
-  const hasRowLayout = shouldSnapToRows(params.settings);
+  const hasRowLayout = (params.snapToRows ?? true) && shouldSnapToRows(params.settings);
 
   if (hasRowLayout) {
     point = snapPointToRow({
@@ -267,7 +268,7 @@ export function placePoint(params: {
 
   if (params.snap && params.gridStepM) {
     // Відцентровуємо ряд: snap лише вздовж вільної осі (вздовж ряду).
-    if (params.settings.type === 'BED' || params.settings.type === 'FIELD') {
+    if (hasRowLayout && (params.settings.type === 'BED' || params.settings.type === 'FIELD')) {
       const direction = params.settings.rowDirection;
       if (direction === 'horizontal') {
         point = { x: snapToGrid(point.x, params.gridStepM), y: point.y };

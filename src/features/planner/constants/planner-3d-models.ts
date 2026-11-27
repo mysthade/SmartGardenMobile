@@ -1,4 +1,4 @@
-import type { PlanObjectType } from '@smart-garden/types';
+ import type { PlanObjectType } from '@smart-garden/types';
 
 export interface Model3DConfig {
   type: PlanObjectType;

@@ -12,6 +12,7 @@ import {
 } from '@/src/components/auth';
 import { SubmitButton } from '@/src/components/auth/submit-button';
 import { useAuth } from '@/src/features/auth/auth-context';
+import { formatApiError } from '@/src/lib/api-errors';
 import { useTheme } from '@/src/theme/theme-context';
 
 type FieldErrors = Partial<Record<'email' | 'password', string>>;
@@ -52,7 +53,7 @@ export default function LoginScreen() {
       await login(parsed.data.email, parsed.data.password);
       router.replace('/dashboard');
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : 'Не вдалося увійти');
+      setFormError(formatApiError(error, 'Не вдалося увійти'));
     } finally {
       setSubmitting(false);
     }

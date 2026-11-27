@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { QueryErrorCard } from '@/src/components/QueryErrorCard';
 import { api } from '@/src/lib/api';
 import { useTheme } from '@/src/theme/theme-context';
 import { ArrowLeft, CheckCircle2, ShieldAlert } from 'lucide-react-native';
@@ -72,6 +73,15 @@ export default function ProblemsScreen() {
                 Завантаження списку проблем…
               </Text>
             </View>
+          ) : (plantsQuery.isError && !plantsQuery.data) || (problemsQuery.isError && !problemsQuery.data) ? (
+            <QueryErrorCard
+              error={problemsQuery.error ?? plantsQuery.error}
+              fallbackMessage="Не вдалося завантажити список проблем"
+              onRetry={() => {
+                void plantsQuery.refetch();
+                if (plantId) void problemsQuery.refetch();
+              }}
+            />
           ) : (
             <View style={[styles.emptyCard, { backgroundColor: theme.pn, borderColor: theme.bd }]}>
               <CheckCircle2 size={40} color={theme.ac} />

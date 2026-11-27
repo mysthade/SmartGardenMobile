@@ -160,6 +160,7 @@ function computePlacement(
     zoneType: state.zoneType,
     settings: state.settings,
     snap,
+    snapToRows: false,
     gridStepM: state.gridStepM,
   });
 }
@@ -340,7 +341,8 @@ export const useZoneEditorStore = create<ZoneEditorState>((set, get) => ({
     if (!plant || plant.deleted) {
       return;
     }
-    const placed = computePlacement(state, xM, yM, plant.size, false);
+    const sizeM = plantSizeForZone(state, plant.size);
+    const placed = computePlacement(state, xM, yM, sizeM, false);
     set({
       plants: { ...state.plants, [id]: { ...plant, positionX: placed.x, positionY: placed.y } },
     });

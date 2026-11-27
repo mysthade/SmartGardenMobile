@@ -1,0 +1,56 @@
+services:
+  - type: web
+    name: smart-garden-api
+    runtime: node
+    plan: free
+    buildCommand: >-
+      corepack enable &&
+      pnpm install --frozen-lockfile=false &&
+      pnpm --filter @smart-garden/api exec prisma generate &&
+      pnpm --filter @smart-garden/types build &&
+      pnpm --filter @smart-garden/validation build &&
+      pnpm --filter @smart-garden/api build
+    startCommand: >-
+      pnpm --filter @smart-garden/api exec prisma migrate deploy &&
+      node server/dist/main.js
+    healthCheckPath: /health/live
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: API_PORT
+        value: 3001
+      - key: WEB_URL
+        value: https://smartgarden.app
+      - key: API_URL
+        sync: false
+      - key: ALLOWED_ORIGINS
+        value: http://localhost:8081,http://localhost:8090
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: ACCESS_TOKEN_SECRET
+        generateValue: true
+      - key: REFRESH_TOKEN_SECRET
+        generateValue: true
+      - key: COOKIE_SECRET
+        generateValue: true
+      - key: CSRF_SECRET
+        generateValue: true
+      - key: EMAIL_FROM
+        value: "Smart Garden <noreply@smartgarden.app>"
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_SECURE
+        value: false
+      - key: SWAGGER_ENABLED
+        value: true
+      - key: AUTO_VERIFY_EMAIL
+        value: true
+

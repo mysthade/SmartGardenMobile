@@ -2,7 +2,7 @@ import base from '@smart-garden/config/eslint/base';
 
 export default [
   {
-    ignores: ['node_modules/**', 'packages/*/dist/**', '.expo/**', 'coverage/**'],
+    ignores: ['node_modules/**', 'packages/*/dist/**', '.expo/**', 'coverage/**', 'server/**'],
   },
   ...base,
   {

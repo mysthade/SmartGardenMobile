@@ -39,8 +39,37 @@ function resolveApiBaseUrl(): string {
   return 'http://localhost:3001';
 }
 
+export const API_BASE_URL = resolveApiBaseUrl();
+
+/**
+ * Перетворює відносні або `localhost`-URL вкладень (наприклад з API_URL=http://localhost:3001)
+ * на адресу, доступну з поточного пристрою/емулятора (`API_BASE_URL`).
+ */
+export function resolveAssetUrl(url: string | null | undefined): string | null {
+  if (!url) {
+    return null;
+  }
+  if (url.startsWith('/')) {
+    return `${API_BASE_URL}${url}`;
+  }
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
+      const apiOrigin = new URL(API_BASE_URL);
+      if (parsed.pathname.startsWith('/api/')) {
+        return `${apiOrigin.origin}${parsed.pathname}${parsed.search}`;
+      }
+      parsed.hostname = apiOrigin.hostname;
+      return parsed.toString();
+    }
+  } catch {
+    return url;
+  }
+  return url;
+}
+
 export const api = createApiClient({
-  baseUrl: resolveApiBaseUrl(),
+  baseUrl: API_BASE_URL,
   // Mobile transport: refresh token in JSON body, no cookies/CSRF.
   clientType: 'mobile',
   getAccessToken: () => tokenStore.get(),

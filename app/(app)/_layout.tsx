@@ -1,5 +1,6 @@
 import { Redirect, Stack } from 'expo-router';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { OfflineBanner } from '@/src/components/OfflineBanner';
 import { useAuth } from '@/src/features/auth/auth-context';
 
 /** Auth guard for the private area with Tabs and detail sub-screens. */
@@ -19,20 +20,24 @@ export default function AppLayout() {
   }
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="journal" options={{ headerShown: false }} />
-      <Stack.Screen name="harvests" options={{ headerShown: false }} />
-      <Stack.Screen name="problems" options={{ headerShown: false }} />
-      <Stack.Screen name="analytics" options={{ headerShown: false }} />
-      <Stack.Screen name="planner" options={{ headerShown: false }} />
-      <Stack.Screen name="gardens/[gardenId]/planner" options={{ headerShown: false }} />
-      <Stack.Screen name="zones/[zoneId]/editor" options={{ headerShown: false }} />
-      <Stack.Screen name="plants/[plantId]" options={{ headerShown: false }} />
-    </Stack>
+    <View style={styles.flex}>
+      <OfflineBanner />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="journal" options={{ headerShown: false }} />
+        <Stack.Screen name="harvests" options={{ headerShown: false }} />
+        <Stack.Screen name="problems" options={{ headerShown: false }} />
+        <Stack.Screen name="analytics" options={{ headerShown: false }} />
+        <Stack.Screen name="planner" options={{ headerShown: false }} />
+        <Stack.Screen name="gardens/[gardenId]/planner" options={{ headerShown: false }} />
+        <Stack.Screen name="zones/[zoneId]/editor" options={{ headerShown: false }} />
+        <Stack.Screen name="plants/[plantId]" options={{ headerShown: false }} />
+      </Stack>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FAFCF8' },
 });
