@@ -367,11 +367,17 @@ export interface AnalyticsSummaryDto {
   zonesCount: number;
   plantsCount: number;
   openProblemsCount: number;
+  resolvedProblemsCount: number;
   openTasksCount: number;
+  completedTasksCount: number;
+  overdueTasksCount: number;
+  careLast30DaysCount: number;
+  totalAreaSqM: number;
   harvestByMassGrams: HarvestSeriesPoint[];
   harvestByPieces: HarvestSeriesPoint[];
   harvestByLiters: HarvestSeriesPoint[];
   plantsByStatus: Array<{ status: string; count: number }>;
+  careByType: Array<{ type: string; count: number }>;
 }
 
 export interface DashboardNearestTaskDto {

@@ -11,11 +11,17 @@ export type AnalyticsSummary = {
   zonesCount: number;
   plantsCount: number;
   openProblemsCount: number;
+  resolvedProblemsCount: number;
   openTasksCount: number;
+  completedTasksCount: number;
+  overdueTasksCount: number;
+  careLast30DaysCount: number;
+  totalAreaSqM: number;
   harvestByMassGrams: HarvestSeriesPoint[];
   harvestByPieces: HarvestSeriesPoint[];
   harvestByLiters: HarvestSeriesPoint[];
   plantsByStatus: Array<{ status: string; count: number }>;
+  careByType: Array<{ type: string; count: number }>;
 };
 
 @Injectable()
@@ -42,23 +48,40 @@ export class AnalyticsService {
       },
     };
 
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const zoneWhere: Prisma.GardenZoneWhereInput = {
+      deletedAt: null,
+      garden: { ownerId, deletedAt: null, ...(gardenId ? { id: gardenId } : {}) },
+    };
+    const taskBaseWhere: Prisma.TaskWhereInput = {
+      userId: ownerId,
+      deletedAt: null,
+      ...(gardenId ? { gardenId } : {}),
+    };
+
     const [
       gardensCount,
       zonesCount,
+      zoneAreaAgg,
       plantsCount,
       openProblemsCount,
+      resolvedProblemsCount,
       openTasksCount,
+      completedTasksCount,
+      overdueTasksCount,
+      careLast30DaysCount,
+      careByType,
       plantsByStatus,
       harvests,
     ] = await Promise.all([
       this.prisma.garden.count({
         where: { ownerId, deletedAt: null, ...(gardenId ? { id: gardenId } : {}) },
       }),
-      this.prisma.gardenZone.count({
-        where: {
-          deletedAt: null,
-          garden: { ownerId, deletedAt: null, ...(gardenId ? { id: gardenId } : {}) },
-        },
+      this.prisma.gardenZone.count({ where: zoneWhere }),
+      this.prisma.gardenZone.aggregate({
+        where: zoneWhere,
+        _sum: { area: true },
       }),
       this.prisma.plant.count({ where: plantWhere }),
       this.prisma.plantProblem.count({
@@ -67,13 +90,41 @@ export class AnalyticsService {
           plant: plantWhere,
         },
       }),
+      this.prisma.plantProblem.count({
+        where: {
+          status: 'RESOLVED',
+          plant: plantWhere,
+        },
+      }),
       this.prisma.task.count({
         where: {
-          userId: ownerId,
-          deletedAt: null,
+          ...taskBaseWhere,
           status: { in: ['TODO', 'IN_PROGRESS'] },
-          ...(gardenId ? { gardenId } : {}),
         },
+      }),
+      this.prisma.task.count({
+        where: {
+          ...taskBaseWhere,
+          status: 'DONE',
+        },
+      }),
+      this.prisma.task.count({
+        where: {
+          ...taskBaseWhere,
+          status: { in: ['TODO', 'IN_PROGRESS'] },
+          dueAt: { lt: now },
+        },
+      }),
+      this.prisma.careActivity.count({
+        where: {
+          plant: plantWhere,
+          performedAt: { gte: thirtyDaysAgo },
+        },
+      }),
+      this.prisma.careActivity.groupBy({
+        by: ['type'],
+        where: { plant: plantWhere },
+        _count: { _all: true },
       }),
       this.prisma.plant.groupBy({
         by: ['status'],
@@ -106,10 +157,19 @@ export class AnalyticsService {
       zonesCount,
       plantsCount,
       openProblemsCount,
+      resolvedProblemsCount,
       openTasksCount,
+      completedTasksCount,
+      overdueTasksCount,
+      careLast30DaysCount,
+      totalAreaSqM: Number(zoneAreaAgg._sum.area ?? 0),
       ...series,
       plantsByStatus: plantsByStatus.map((row) => ({
         status: row.status,
+        count: row._count._all,
+      })),
+      careByType: careByType.map((row) => ({
+        type: row.type,
         count: row._count._all,
       })),
     };
