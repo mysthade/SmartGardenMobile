@@ -45,6 +45,13 @@ export class RateLimitService {
 
   private consumeMemory(rule: RateLimitRule): void {
     const now = Date.now();
+    if (this.memoryCounters.size > 5000) {
+      for (const [k, entry] of this.memoryCounters) {
+        if (entry.expiresAt <= now) {
+          this.memoryCounters.delete(k);
+        }
+      }
+    }
     const existing = this.memoryCounters.get(rule.key);
     if (!existing || existing.expiresAt <= now) {
       this.memoryCounters.set(rule.key, {

@@ -60,6 +60,8 @@ export class StorageController {
     }
 
     res.setHeader('Content-Type', mimeFromKey(key));
+    res.setHeader('Content-Disposition', 'inline');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Cache-Control', 'private, max-age=300');
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     res.send(buffer);

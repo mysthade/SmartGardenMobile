@@ -5,6 +5,7 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { CookieService } from './cookie.service';
 import { CsrfService } from './csrf.service';
+import { ApiRateLimitGuard } from './guards/api-rate-limit.guard';
 import { CsrfGuard } from './guards/csrf.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { PasswordService } from './password.service';
@@ -23,8 +24,10 @@ import { TokenService } from './token.service';
     RateLimitService,
     JwtAuthGuard,
     CsrfGuard,
+    ApiRateLimitGuard,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: CsrfGuard },
+    { provide: APP_GUARD, useClass: ApiRateLimitGuard },
   ],
   exports: [AuthService, PasswordService, TokenService, JwtAuthGuard],
 })

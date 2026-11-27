@@ -46,6 +46,7 @@ async function bootstrap(): Promise<void> {
           }
         : false,
       crossOriginEmbedderPolicy: false,
+      referrerPolicy: { policy: 'no-referrer' },
       hsts: isProd ? { maxAge: 31536000, includeSubDomains: true, preload: true } : false,
     }),
   );
@@ -68,7 +69,11 @@ async function bootstrap(): Promise<void> {
   // Express behind reverse proxies (rate-limit / audit IP)
   const httpAdapter = app.getHttpAdapter();
   if (typeof httpAdapter.getInstance === 'function') {
-    const instance = httpAdapter.getInstance() as { set?: (key: string, value: unknown) => void };
+    const instance = httpAdapter.getInstance() as {
+      set?: (key: string, value: unknown) => void;
+      disable?: (setting: string) => void;
+    };
+    instance.disable?.('x-powered-by');
     instance.set?.('trust proxy', 1);
   }
   app.useGlobalFilters(new GlobalExceptionFilter());

@@ -12,6 +12,7 @@ import { StorageService } from '../storage/storage.service';
 const MAX_BYTES = 10 * 1024 * 1024;
 const MAX_DIMENSION = 4096;
 const UPLOAD_URL_TTL = 900;
+const MAX_PHOTOS_PER_PLANT = 2;
 
 @Injectable()
 export class AttachmentsService {
@@ -23,6 +24,22 @@ export class AttachmentsService {
 
   async createUploadUrl(ownerId: string, input: CreateUploadUrlInput): Promise<UploadUrlResponse> {
     const links = await this.resolveParentLinks(ownerId, input);
+    if (links.plantId && !links.journalEntryId && !links.problemId && !links.harvestId) {
+      const existingCount = await this.prisma.attachment.count({
+        where: {
+          plantId: links.plantId,
+          deletedAt: null,
+          status: 'CONFIRMED',
+        },
+      });
+      if (existingCount >= MAX_PHOTOS_PER_PLANT) {
+        throw new AppHttpException(
+          400,
+          'VALIDATION_ERROR',
+          `До однієї рослини можна прикріпити максимум ${MAX_PHOTOS_PER_PLANT} фотографії`,
+        );
+      }
+    }
     const extension = extensionFromMime(input.mimeType);
     const storageKey = this.storage.buildObjectKey(ownerId, extension);
 
