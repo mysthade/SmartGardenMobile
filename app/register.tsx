@@ -14,6 +14,7 @@ import {
   SubmitButton,
 } from '@/src/components/auth';
 import { useAuth } from '@/src/features/auth/auth-context';
+import { api } from '@/src/lib/api';
 import { useTheme } from '@/src/theme/theme-context';
 import { formatApiError } from '@/src/lib/api-errors';
 
@@ -34,11 +35,15 @@ export default function RegisterScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [focusedField, setFocusedField] = useState<'name' | 'email' | 'password' | 'confirmPassword' | null>(null);
+  const [focusedField, setFocusedField] = useState<'name' | 'email' | 'password' | 'confirmPassword' | 'verifyCode' | null>(null);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [verifyCode, setVerifyCode] = useState('');
+  const [verifyError, setVerifyError] = useState<string | null>(null);
+  const [verifying, setVerifying] = useState(false);
+  const [resending, setResending] = useState(false);
 
   const hasConfirm = confirmPassword.length > 0;
   const isConfirmMatch = hasConfirm && confirmPassword === password;
@@ -124,19 +129,79 @@ export default function RegisterScreen() {
     }
   };
 
+  const onVerifyEmail = async () => {
+    const clean = verifyCode.trim();
+    if (clean.length < 6) {
+      setVerifyError('Введіть 6-значний код підтвердження з пошти');
+      return;
+    }
+    setVerifyError(null);
+    setVerifying(true);
+    try {
+      await api.verifyEmail(clean);
+      router.replace('/login');
+    } catch (error) {
+      setVerifyError(formatApiError(error, 'Невірний або прострочений код'));
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const onResendCode = async () => {
+    setVerifyError(null);
+    setResending(true);
+    try {
+      const res = await api.resendVerification(email.trim().toLowerCase());
+      setNotice(res.message);
+    } catch (error) {
+      setVerifyError(formatApiError(error, 'Не вдалося повторно надіслати код'));
+    } finally {
+      setResending(false);
+    }
+  };
+
   if (notice) {
     return (
       <AuthScreenLayout onBack={() => router.replace('/login')} testID="register-notice-screen">
         <View style={styles.noticeContainer}>
           <Text style={styles.noticeIcon}>📧</Text>
-          <AuthSheetHeader title="Перевірте пошту" subtitle={notice} />
-          <View style={styles.noticeButtonWrap}>
-            <SubmitButton
-              title="До входу"
-              onPress={() => router.replace('/login')}
-              testID="register-notice-submit"
-            />
-          </View>
+          <AuthSheetHeader title="Підтвердження пошти" subtitle={notice} />
+        </View>
+        <AuthField
+          label="Код підтвердження з email"
+          value={verifyCode}
+          onChangeText={(text) => {
+            setVerifyCode(text);
+            if (verifyError) setVerifyError(null);
+          }}
+          placeholder="123456"
+          leadingIcon="🔑"
+          error={verifyError ?? undefined}
+          focused={focusedField === 'verifyCode'}
+          onFocus={() => setFocusedField('verifyCode')}
+          onBlur={() => setFocusedField((f) => (f === 'verifyCode' ? null : f))}
+          autoCapitalize="none"
+          testID="register-verify-code"
+        />
+        <SubmitButton
+          title="Підтвердити email"
+          loading={verifying}
+          onPress={onVerifyEmail}
+          testID="register-verify-submit"
+        />
+        <View style={styles.noticeButtonWrap}>
+          <AuthSwitchRow
+            prefix="Не прийшов код?"
+            action={resending ? 'Надсилаємо...' : 'Надіслати ще раз'}
+            onPress={() => {
+              if (!resending) void onResendCode();
+            }}
+          />
+          <AuthSwitchRow
+            prefix="Вже підтвердили?"
+            action="До входу"
+            onPress={() => router.replace('/login')}
+          />
         </View>
       </AuthScreenLayout>
     );
@@ -160,8 +225,7 @@ export default function RegisterScreen() {
         onFocus={() => setFocusedField('name')}
         onBlur={() => setFocusedField((f) => (f === 'name' ? null : f))}
         autoCapitalize="words"
-        autoComplete="name"
-        textContentType="name"
+        keyboardType="default"
         returnKeyType="next"
         onSubmitEditing={() => emailRef.current?.focus()}
         testID="register-name"

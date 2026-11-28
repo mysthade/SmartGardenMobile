@@ -1,5 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
 import type { AppEnv } from '../config/env.validation';
 import { MAIL_ADAPTER, type MailAdapter } from './mail.types';
 
@@ -17,32 +19,44 @@ export class MailService {
     this.isDev = config.get('NODE_ENV', { infer: true }) === 'development';
   }
 
-  async sendEmailVerification(to: string, name: string, token: string): Promise<void> {
+  async sendEmailVerification(to: string, name: string, token: string): Promise<boolean> {
     const link = `${this.webUrl}/verify-email?token=${encodeURIComponent(token)}`;
     if (this.isDev) {
-      this.logger.log(`[dev] Email verification link for ${to}: ${link}`);
+      this.logger.log(`[dev] Email verification code for ${to}: ${token} (${link})`);
+      await this.appendLocalDevCode('EMAIL_VERIFY', to, token);
     }
-    await this.safeSend({
+    return this.safeSend({
       to,
       subject: 'Підтвердження email — Smart Garden',
-      text: `Вітаємо, ${name}!\n\nПідтвердіть email: ${link}\n\nПосилання дійсне обмежений час.`,
-      html: `<p>Вітаємо, ${escapeHtml(name)}!</p><p><a href="${link}">Підтвердити email</a></p><p>Посилання дійсне обмежений час.</p>`,
+      text: `Вітаємо, ${name}!\n\nВаш код підтвердження: ${token}\nАбо перейдіть за посиланням: ${link}\n\nКод дійсний обмежений час.`,
+      html: `<p>Вітаємо, ${escapeHtml(name)}!</p><p>Ваш код підтвердження: <strong>${escapeHtml(token)}</strong></p><p>Або <a href="${link}">підтвердіть email за посиланням</a>.</p><p>Код дійсний обмежений час.</p>`,
       devLink: link,
     });
   }
 
-  async sendPasswordReset(to: string, name: string, token: string): Promise<void> {
+  async sendPasswordReset(to: string, name: string, token: string): Promise<boolean> {
     const link = `${this.webUrl}/reset-password?token=${encodeURIComponent(token)}`;
     if (this.isDev) {
-      this.logger.log(`[dev] Password reset link for ${to}: ${link}`);
+      this.logger.log(`[dev] Password reset code for ${to}: ${token} (${link})`);
+      await this.appendLocalDevCode('PASSWORD_RESET', to, token);
     }
-    await this.safeSend({
+    return this.safeSend({
       to,
-      subject: 'Скидання пароля — Smart Garden',
-      text: `Вітаємо, ${name}!\n\nСкинути пароль: ${link}\n\nЯкщо ви не надсилали запит — ігноруйте лист.`,
-      html: `<p>Вітаємо, ${escapeHtml(name)}!</p><p><a href="${link}">Скинути пароль</a></p><p>Якщо ви не надсилали запит — ігноруйте лист.</p>`,
+      subject: 'Код для зміни / скидання пароля — Smart Garden',
+      text: `Вітаємо, ${name}!\n\nВаш код підтвердження для зміни пароля: ${token}\nАбо перейдіть за посиланням: ${link}\n\nЯкщо ви не надсилали запит — ігноруйте лист.`,
+      html: `<p>Вітаємо, ${escapeHtml(name)}!</p><p>Ваш код підтвердження для зміни пароля: <strong>${escapeHtml(token)}</strong></p><p>Або <a href="${link}">скиньте пароль за посиланням</a>.</p><p>Якщо ви не надсилали запит — ігноруйте лист.</p>`,
       devLink: link,
     });
+  }
+
+  private async appendLocalDevCode(kind: string, to: string, code: string): Promise<void> {
+    try {
+      const logPath = path.resolve(process.cwd(), 'dev-codes.log');
+      const line = `[${new Date().toISOString()}] ${kind} | ${to} | КОД: ${code}\n`;
+      await fs.appendFile(logPath, line, 'utf8');
+    } catch {
+      // Ignore file write errors in read-only environments.
+    }
   }
 
   private async safeSend(message: {
@@ -51,9 +65,10 @@ export class MailService {
     text: string;
     html: string;
     devLink?: string;
-  }): Promise<void> {
+  }): Promise<boolean> {
     try {
       await this.adapter.send(message);
+      return true;
     } catch (error) {
       // Do not fail auth flows on SMTP outages; log for ops.
       this.logger.warn(
@@ -62,6 +77,7 @@ export class MailService {
       if (this.isDev && message.devLink) {
         this.logger.warn(`[dev] SMTP unavailable — use this link manually: ${message.devLink}`);
       }
+      return false;
     }
   }
 }

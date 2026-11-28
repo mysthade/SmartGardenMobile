@@ -106,6 +106,12 @@ export interface MessageResponse {
   message: string;
 }
 
+export interface AvatarUploadUrlResponse {
+  uploadUrl: string;
+  storageKey: string;
+  expiresInSeconds: number;
+}
+
 export interface GardenDto {
   id: string;
   ownerId: string;

@@ -1,7 +1,8 @@
 import { router } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/src/features/auth/auth-context';
+import { resolveAssetUrl } from '@/src/lib/api';
 import { useTheme } from '@/src/theme/theme-context';
 import {
   Compass,
@@ -14,6 +15,7 @@ import {
   LogOut,
   ChevronRight,
   User,
+  ShieldCheck,
 } from 'lucide-react-native';
 import { type ThemeTokens } from '@/src/theme/tokens';
 
@@ -44,9 +46,25 @@ export default function MoreMenuScreen() {
       </View>
 
       {/* User Card */}
-      <View style={[styles.userCard, { backgroundColor: theme.pn, borderColor: theme.bd }]}>
-        <View style={[styles.avatarWrap, { backgroundColor: theme.name === 'dark' ? '#17251c' : '#eaf6ee' }]}>
-          <User size={24} color={theme.ac} />
+      <Pressable
+        onPress={() => router.push('/profile' as never)}
+        style={[styles.userCard, { backgroundColor: theme.pn, borderColor: theme.bd }]}
+      >
+        <View
+          style={[
+            styles.avatarWrap,
+            { backgroundColor: theme.name === 'dark' ? '#17251c' : '#eaf6ee', overflow: 'hidden' },
+          ]}
+        >
+          {resolveAssetUrl(user?.avatarUrl) ? (
+            <Image
+              source={{ uri: resolveAssetUrl(user?.avatarUrl)! }}
+              style={{ width: '100%', height: '100%' }}
+              resizeMode="cover"
+            />
+          ) : (
+            <User size={24} color={theme.ac} />
+          )}
         </View>
         <View style={styles.userInfo}>
           <Text style={[styles.userName, { color: theme.tx }]}>
@@ -54,7 +72,8 @@ export default function MoreMenuScreen() {
           </Text>
           <Text style={[styles.userEmail, { color: theme.mu }]}>{user?.email || ''}</Text>
         </View>
-      </View>
+        <ChevronRight size={18} color={theme.mu} />
+      </Pressable>
 
       {/* Section: Звітність та аналітика */}
       <Text style={[styles.sectionTitle, { color: theme.mu }]}>ЗВІТНІСТЬ ТА ЖУРНАЛ</Text>
@@ -107,6 +126,14 @@ export default function MoreMenuScreen() {
       {/* Section: Налаштування та тема */}
       <Text style={[styles.sectionTitle, { color: theme.mu }]}>НАЛАШТУВАННЯ</Text>
       <View style={[styles.menuBlock, { backgroundColor: theme.pn, borderColor: theme.bd }]}>
+        <MenuItem
+          icon={<ShieldCheck size={20} color={theme.ac} />}
+          title="Профіль, аватар і пароль"
+          subtitle="Аватарка, ім’я та зміна пароля через пошту"
+          onPress={() => router.push('/profile' as never)}
+          theme={theme}
+        />
+        <View style={[styles.divider, { backgroundColor: theme.bd }]} />
         <MenuItem
           icon={theme.name === 'dark' ? <Sun size={20} color="#F39C12" /> : <Moon size={20} color="#34495E" />}
           title="Тема оформлення"

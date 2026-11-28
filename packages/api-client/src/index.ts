@@ -5,6 +5,7 @@ import type {
   AttachmentDto,
   AuthSessionDto,
   AuthTokensDto,
+  AvatarUploadUrlResponse,
   BedLayoutDto,
   BedLayoutSaveResponse,
   CareActivityDto,
@@ -249,6 +250,21 @@ export class ApiClient {
 
   updateProfile(body: Record<string, unknown>): Promise<UserPublicDto> {
     return this.request('/api/v1/profile', { method: 'PATCH', json: body });
+  }
+
+  createAvatarUploadUrl(body: { mimeType: string; size: number }): Promise<AvatarUploadUrlResponse> {
+    return this.request('/api/v1/profile/avatar/upload-url', { method: 'POST', json: body });
+  }
+
+  confirmAvatar(storageKey: string): Promise<UserPublicDto> {
+    return this.request('/api/v1/profile/avatar/confirm', {
+      method: 'POST',
+      json: { storageKey },
+    });
+  }
+
+  deleteAvatar(): Promise<UserPublicDto> {
+    return this.request('/api/v1/profile/avatar', { method: 'DELETE' });
   }
 
   // Gardens

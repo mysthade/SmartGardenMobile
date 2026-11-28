@@ -10,7 +10,7 @@ export const registerSchema = z.object({
 });
 
 export const verifyEmailSchema = z.object({
-  token: z.string().min(32).max(512),
+  token: z.string().trim().min(6).max(512),
 });
 
 export const resendVerificationSchema = z.object({
@@ -34,8 +34,21 @@ export const forgotPasswordSchema = z.object({
 });
 
 export const resetPasswordSchema = z.object({
-  token: z.string().min(32).max(512),
+  token: z.string().trim().min(6).max(512),
   password: passwordSchema,
+});
+
+export const avatarUploadUrlSchema = z.object({
+  mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
+  size: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(5 * 1024 * 1024, 'Максимальний розмір аватара — 5 МБ'),
+});
+
+export const confirmAvatarSchema = z.object({
+  storageKey: z.string().min(10).max(512),
 });
 
 export const changePasswordSchema = z.object({
@@ -68,3 +81,5 @@ export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
+export type AvatarUploadUrlInput = z.infer<typeof avatarUploadUrlSchema>;
+export type ConfirmAvatarInput = z.infer<typeof confirmAvatarSchema>;

@@ -17,7 +17,7 @@ import type {
   ResetPasswordInput,
   VerifyEmailInput,
 } from '@smart-garden/validation';
-import { randomUUID } from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
 import type { Response } from 'express';
 import {
   conflict,
@@ -31,6 +31,7 @@ import { generateOpaqueToken, hashIp, normalizeEmail, sha256 } from '../common/u
 import type { AppEnv } from '../config/env.validation';
 import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { StorageService } from '../storage/storage.service';
 import { CookieService } from './cookie.service';
 import { CsrfService } from './csrf.service';
 import { PasswordService } from './password.service';
@@ -62,6 +63,7 @@ export class AuthService {
     private readonly rateLimit: RateLimitService,
     private readonly cookies: CookieService,
     private readonly csrf: CsrfService,
+    private readonly storage: StorageService,
     config: ConfigService<AppEnv, true>,
   ) {
     this.refreshTtlSeconds = config.get('REFRESH_TOKEN_TTL_SECONDS', { infer: true });
@@ -82,9 +84,7 @@ export class AuthService {
       where: { normalizedEmail },
     });
 
-    const autoVerify =
-      process.env.AUTO_VERIFY_EMAIL === 'true' ||
-      (process.env.NODE_ENV !== 'production' && process.env.SMTP_HOST === 'localhost');
+    const autoVerify = process.env.AUTO_VERIFY_EMAIL === 'true';
 
     if (existing && !existing.deletedAt) {
       if (!existing.emailVerifiedAt) {
@@ -130,7 +130,9 @@ export class AuthService {
     }
 
     await this.issueEmailVerification(user);
-    return { message: 'Реєстрація успішна. Перевірте email для підтвердження' };
+    return {
+      message: 'Реєстрація успішна. Перевірте пошту (або dev-codes.log на ПК) і введіть код підтвердження',
+    };
   }
 
   async verifyEmail(input: VerifyEmailInput): Promise<MessageResponse> {
@@ -182,7 +184,9 @@ export class AuthService {
       await this.issueEmailVerification(user);
     }
 
-    return { message: 'Якщо обліковий запис існує, ми надіслали лист для підтвердження' };
+    return {
+      message: 'Якщо обліковий запис існує, ми надіслали код для підтвердження',
+    };
   }
 
   async login(input: LoginInput, meta: RequestMeta, res: Response): Promise<AuthResult> {
@@ -279,7 +283,7 @@ export class AuthService {
     });
 
     const tokens = this.applyClientTransport(res, meta.clientType, accessToken, nextRefresh);
-    return { ...tokens, user: toUserPublicDto(updated.user) };
+    return { ...tokens, user: await this.toUserDto(updated.user) };
   }
 
   async logout(userId: string, sessionId: string, res: Response): Promise<MessageResponse> {
@@ -311,7 +315,7 @@ export class AuthService {
     const normalizedEmail = normalizeEmail(input.email);
     const user = await this.prisma.user.findUnique({ where: { normalizedEmail } });
     if (user && !user.deletedAt) {
-      const token = generateOpaqueToken(32);
+      const token = String(randomInt(100000, 1000000));
       await this.prisma.passwordResetToken.create({
         data: {
           userId: user.id,
@@ -322,7 +326,9 @@ export class AuthService {
       await this.mail.sendPasswordReset(user.email, user.name, token);
     }
 
-    return { message: 'Якщо обліковий запис існує, ми надіслали інструкції для скидання пароля' };
+    return {
+      message: 'Якщо обліковий запис існує, ми надіслали код для зміни пароля на пошту',
+    };
   }
 
   async resetPassword(input: ResetPasswordInput, meta?: RequestMeta): Promise<MessageResponse> {
@@ -419,7 +425,7 @@ export class AuthService {
     if (!user) {
       throw notFound('Користувача не знайдено');
     }
-    return toUserPublicDto(user);
+    return this.toUserDto(user);
   }
 
   async listSessions(userId: string, currentSessionId: string): Promise<AuthSessionDto[]> {
@@ -480,7 +486,7 @@ export class AuthService {
     });
 
     const tokens = this.applyClientTransport(res, meta.clientType, accessToken, refreshToken);
-    return { user: toUserPublicDto(user), tokens };
+    return { user: await this.toUserDto(user), tokens };
   }
 
   private applyClientTransport(
@@ -516,7 +522,7 @@ export class AuthService {
   }
 
   private async issueEmailVerification(user: User): Promise<void> {
-    const token = generateOpaqueToken(32);
+    const token = String(randomInt(100000, 1000000));
     await this.prisma.emailVerificationToken.create({
       data: {
         userId: user.id,
@@ -525,6 +531,14 @@ export class AuthService {
       },
     });
     await this.mail.sendEmailVerification(user.email, user.name, token);
+  }
+
+  private async toUserDto(user: User): Promise<UserPublicDto> {
+    const dto = toUserPublicDto(user);
+    if (dto.avatarUrl && !dto.avatarUrl.startsWith('http')) {
+      dto.avatarUrl = await this.storage.createDownloadUrl(dto.avatarUrl);
+    }
+    return dto;
   }
 
   private toSessionDto(session: Session, currentSessionId: string): AuthSessionDto {

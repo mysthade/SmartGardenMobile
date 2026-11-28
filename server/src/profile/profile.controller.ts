@@ -1,7 +1,14 @@
-import { Body, Controller, Delete, HttpCode, Patch } from '@nestjs/common';
+import { Body, Controller, Delete, HttpCode, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import type { MessageResponse, UserPublicDto } from '@smart-garden/types';
-import { updateProfileSchema, type UpdateProfileInput } from '@smart-garden/validation';
+import type { AvatarUploadUrlResponse, MessageResponse, UserPublicDto } from '@smart-garden/types';
+import {
+  avatarUploadUrlSchema,
+  confirmAvatarSchema,
+  updateProfileSchema,
+  type AvatarUploadUrlInput,
+  type ConfirmAvatarInput,
+  type UpdateProfileInput,
+} from '@smart-garden/validation';
 import { CurrentUser, type AuthUser } from '../common/decorators/auth.decorators';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { ProfileService } from './profile.service';
@@ -18,6 +25,29 @@ export class ProfileController {
     @Body(new ZodValidationPipe(updateProfileSchema)) body: UpdateProfileInput,
   ): Promise<UserPublicDto> {
     return this.profile.update(user.id, body);
+  }
+
+  @Post('avatar/upload-url')
+  async createAvatarUploadUrl(
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodValidationPipe(avatarUploadUrlSchema)) body: AvatarUploadUrlInput,
+  ): Promise<AvatarUploadUrlResponse> {
+    return this.profile.createAvatarUploadUrl(user.id, body);
+  }
+
+  @Post('avatar/confirm')
+  @HttpCode(200)
+  async confirmAvatar(
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodValidationPipe(confirmAvatarSchema)) body: ConfirmAvatarInput,
+  ): Promise<UserPublicDto> {
+    return this.profile.confirmAvatar(user.id, body.storageKey);
+  }
+
+  @Delete('avatar')
+  @HttpCode(200)
+  async removeAvatar(@CurrentUser() user: AuthUser): Promise<UserPublicDto> {
+    return this.profile.removeAvatar(user.id);
   }
 
   @Delete()
